@@ -25,13 +25,15 @@ export default function CandidateAssessment() {
     const [violationType, setViolationType] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Behavioral Biometrics State
-    const [keypressPatterns, setKeypressPatterns] = useState([]);
-    const [lastKeyTime, setLastKeyTime] = useState(0);
-    const [focusLostCount, setFocusLostCount] = useState(0);
-    const [backspaceCount, setBackspaceCount] = useState(0);
-    const [answerChanges, setAnswerChanges] = useState(0);
-    const [copyPasteAttempts, setCopyPasteAttempts] = useState(0);
+    // Behavioral Biometrics State (Using a ref to avoid stale closures in event listeners)
+    const metricsRef = useRef({
+        keypressPatterns: [],
+        lastKeyTime: 0,
+        focusLostCount: 0,
+        backspaceCount: 0,
+        answerChanges: 0,
+        copyPasteAttempts: 0
+    });
 
     // Section/Timer State
     const [currentSection, setCurrentSection] = useState("MCQ"); // MCQ, SUBJECTIVE, CODING
@@ -101,35 +103,38 @@ export default function CandidateAssessment() {
 
     const handleVisibilityChange = () => {
         if (document.hidden && examStarted) {
-            setFocusLostCount(prev => prev + 1);
+            metricsRef.current.focusLostCount++;
             triggerViolation("TAB_SWITCH_OR_NOTIFICATION");
         }
     };
 
     const handleBlur = () => {
         if (examStarted) {
-            setFocusLostCount(prev => prev + 1);
+            metricsRef.current.focusLostCount++;
             triggerViolation("TAB_SWITCH_OR_NOTIFICATION");
         }
     };
 
     const handleKeyDown = (e) => {
         const now = Date.now();
-        if (lastKeyTime > 0) {
-            const latency = now - lastKeyTime;
-            setKeypressPatterns(prev => [...prev.slice(-19), latency]);
+        if (metricsRef.current.lastKeyTime > 0) {
+            const latency = now - metricsRef.current.lastKeyTime;
+            metricsRef.current.keypressPatterns.push(latency);
+            if (metricsRef.current.keypressPatterns.length > 20) {
+                metricsRef.current.keypressPatterns.shift();
+            }
         }
-        setLastKeyTime(now);
+        metricsRef.current.lastKeyTime = now;
 
         // Track backspaces as a behavioral biometric
-        if (e.key === 'Backspace') setBackspaceCount(prev => prev + 1);
+        if (e.key === 'Backspace') metricsRef.current.backspaceCount++;
 
         if (e.key === 'Escape' && examStarted) triggerViolation('FULLSCREEN_EXIT');
 
         // Distinguish copy-paste from other Ctrl combos
         if ((e.ctrlKey || e.metaKey) && examStarted) {
             if (e.key === 'c' || e.key === 'v' || e.key === 'x') {
-                setCopyPasteAttempts(prev => prev + 1);
+                metricsRef.current.copyPasteAttempts++;
                 triggerViolation('COPY_PASTE_ATTEMPT');
             } else if (e.key !== 'a') {
                 // Block other dangerous Ctrl combos (not Ctrl+A select-all)
@@ -158,13 +163,13 @@ export default function CandidateAssessment() {
                 auto_submitted: true,
                 // Full behavioral biometrics payload
                 biometrics: {
-                    keypress_patterns: keypressPatterns,
-                    focus_lost_count: focusLostCount,
-                    backspace_count: backspaceCount,
-                    copy_paste_attempts: copyPasteAttempts,
-                    answer_changes: answerChanges,
-                    avg_keystroke_latency_ms: keypressPatterns.length > 0
-                        ? Math.round(keypressPatterns.reduce((a, b) => a + b, 0) / keypressPatterns.length)
+                    keypress_patterns: [...metricsRef.current.keypressPatterns],
+                    focus_lost_count: metricsRef.current.focusLostCount,
+                    backspace_count: metricsRef.current.backspaceCount,
+                    copy_paste_attempts: metricsRef.current.copyPasteAttempts,
+                    answer_changes: metricsRef.current.answerChanges,
+                    avg_keystroke_latency_ms: metricsRef.current.keypressPatterns.length > 0
+                        ? Math.round(metricsRef.current.keypressPatterns.reduce((a, b) => a + b, 0) / metricsRef.current.keypressPatterns.length)
                         : 0
                 }
             });
@@ -238,7 +243,7 @@ export default function CandidateAssessment() {
     };
 
     const handleAnswerChange = (questionId, value, lang = null) => {
-        setAnswerChanges(prev => prev + 1);
+        metricsRef.current.answerChanges++;
         if (lang) {
             setAnswers(prev => ({ ...prev, [questionId]: { code: value, lang } }));
         } else {
@@ -295,7 +300,7 @@ export default function CandidateAssessment() {
                     <div className="h-40 w-1 bg-white/5 rounded-full relative overflow-hidden">
                         <div
                             className="absolute bottom-0 w-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-1000"
-                            style={{ height: `${Math.min(focusLostCount * 20, 100)}%` }}
+                            style={{ height: `${Math.min(metricsRef.current.focusLostCount * 20, 100)}%` }}
                         ></div>
                     </div>
                     <span className="text-[8px] font-black text-gray-600 vertical-text uppercase tracking-widest">THREAT_LEVEL</span>
