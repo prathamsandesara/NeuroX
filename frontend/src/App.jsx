@@ -19,9 +19,6 @@ function App() {
         <BrowserRouter>
             <AuthProvider>
                 <Routes>
-                    <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
-                        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                    </Route>
 
                     <Route path="/" element={<Layout />}>
                         <Route index element={<LandingPage />} />
@@ -32,6 +29,10 @@ function App() {
                         <Route element={<ProtectedRoute allowedRoles={['RECRUITER', 'ADMIN']} />}>
                             <Route path="recruiter/dashboard" element={<RecruiterDashboard />} />
                             <Route path="recruiter/candidates/:submissionId" element={<CandidateDetail />} />
+                        </Route>
+
+                        <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+                            <Route path="admin/dashboard" element={<AdminDashboard />} />
                         </Route>
 
                         <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>

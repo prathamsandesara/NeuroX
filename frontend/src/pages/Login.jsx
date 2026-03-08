@@ -3,13 +3,11 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
-    Lock, Shield, ArrowRight, Terminal,
-    Cpu, Zap, Fingerprint, Activity,
-    ShieldAlert, Key, User, Globe
+    Shield, ArrowRight, Fingerprint, Activity, Key, User
 } from 'lucide-react';
 
 const Login = () => {
-    const { login, bypassLogin } = useAuth();
+    const { login } = useAuth();
     const navigate = useNavigate();
     const [credentials, setCredentials] = useState({ email: '', password: '' });
     const [loading, setLoading] = useState(false);
@@ -45,17 +43,9 @@ const Login = () => {
         }
     };
 
-    const handleBypass = (role) => {
-        bypassLogin(role);
-        if (role === 'ADMIN') navigate('/admin/dashboard');
-        else if (role === 'RECRUITER' || role === 'HR') navigate('/recruiter/dashboard');
-        else navigate('/candidate/dashboard');
-        toast.success(`BYPASS_ENGAGED: ${role}_NODE`);
-    };
-
     return (
         <div className="min-h-screen bg-[#030303] relative flex items-center justify-center font-sans py-10 px-6 overflow-hidden select-none">
-            {/* Cinematic Background Elements */}
+            {/* Cinematic Background */}
             <div className="noise-overlay"></div>
             <div className="scanline"></div>
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-teal-500/5 blur-[150px] pointer-events-none animate-pulse"></div>
@@ -63,6 +53,7 @@ const Login = () => {
 
             <div className="w-full max-w-lg relative z-10 animate-in fade-in zoom-in-95 duration-1000">
                 <div className="glass-card p-0 bg-black/60 border-teal-500/20 shadow-[0_50px_100px_rgba(0,0,0,0.8)] overflow-hidden group">
+
                     {/* Security Header HUD */}
                     <div className="px-6 py-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -80,100 +71,77 @@ const Login = () => {
                     </div>
 
                     <div className="p-8 md:p-10 space-y-6 relative">
-                        {/* Internal HUD Elements */}
-                        <div className="absolute top-0 right-0 p-6 opacity-5 italic text-[50px] font-black font-cyber select-none pointer-events-none underline decoration-teal-500/20 decoration-4 underline-offset-[-10px]">LOGIN</div>
+                        {/* Watermark */}
+                        <div className="absolute top-0 right-0 p-6 opacity-5 italic text-[50px] font-black font-cyber select-none pointer-events-none">LOGIN</div>
 
-                        <div className="text-center space-y-5 relative z-10">
-                            <div className="text-center space-y-3 relative z-10">
-                                <div className="mx-auto w-12 h-12 bg-teal-500 flex items-center justify-center rounded-xl shadow-[0_0_30px_rgba(20,184,166,0.3)] transition-transform duration-700 group-hover:scale-110 mb-4 border border-white/10">
-                                    <Fingerprint className="text-black" size={24} />
+                        {/* Logo & Title */}
+                        <div className="text-center space-y-3 relative z-10">
+                            <div className="mx-auto w-12 h-12 bg-teal-500 flex items-center justify-center rounded-xl shadow-[0_0_30px_rgba(20,184,166,0.3)] transition-transform duration-700 group-hover:scale-110 mb-4 border border-white/10">
+                                <Fingerprint className="text-black" size={24} />
+                            </div>
+                            <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase font-cyber leading-none">NODE_ACCESS</h1>
+                            <div className="flex items-center justify-center gap-2">
+                                <div className="h-px w-4 bg-teal-500/20"></div>
+                                <p className="text-[9px] text-gray-500 uppercase tracking-[0.4em] font-black">Authorized_Credentials_Only</p>
+                                <div className="h-px w-4 bg-teal-500/20"></div>
+                            </div>
+                        </div>
+
+                        {/* Form */}
+                        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
+                            <div className="space-y-1.5 group/field">
+                                <div className="flex justify-between items-center ml-2">
+                                    <label className="text-[8px] font-black text-teal-400 uppercase tracking-[0.3em] font-cyber italic">IDENTIFIER_STUB:</label>
+                                    <User size={10} className="text-gray-700 group-focus-within/field:text-teal-500 transition-colors" />
                                 </div>
-                                <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase font-cyber leading-none">NODE_ACCESS</h1>
-                                <div className="flex items-center justify-center gap-2">
-                                    <div className="h-px w-4 bg-teal-500/20"></div>
-                                    <p className="text-[9px] text-gray-500 uppercase tracking-[0.4em] font-black">Authorized_Credentials_Only</p>
-                                    <div className="h-px w-4 bg-teal-500/20"></div>
-                                </div>
+                                <input
+                                    type="email"
+                                    className="cyber-input py-3 bg-black/60 border border-white/5 focus:border-teal-500/40 text-xs font-bold tracking-tight rounded-xl transition-all duration-500 placeholder:text-gray-800"
+                                    placeholder="root@neurox.cloud"
+                                    onChange={e => setCredentials({ ...credentials, email: e.target.value })}
+                                    required
+                                />
                             </div>
 
-                            <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
-                                <div className="space-y-1.5 group/field">
-                                    <div className="flex justify-between items-center ml-2">
-                                        <label className="text-[8px] font-black text-teal-400 uppercase tracking-[0.3em] font-cyber italic">IDENTIFIER_STUB:</label>
-                                        <User size={10} className="text-gray-700 group-focus-within/field:text-teal-500 transition-colors" />
-                                    </div>
-                                    <input
-                                        type="email"
-                                        className="cyber-input py-3 bg-black/60 border border-white/5 focus:border-teal-500/40 text-xs font-bold tracking-tight rounded-xl transition-all duration-500 placeholder:text-gray-800"
-                                        placeholder="root@neurox.cloud"
-                                        onChange={e => setCredentials({ ...credentials, email: e.target.value })}
-                                        required
-                                    />
+                            <div className="space-y-1.5 group/field">
+                                <div className="flex justify-between items-center ml-2">
+                                    <label className="text-[8px] font-black text-teal-400 uppercase tracking-[0.3em] font-cyber italic">PASSPHRASE_KEY:</label>
+                                    <Key size={10} className="text-gray-700 group-focus-within/field:text-teal-500 transition-colors" />
                                 </div>
-                                <div className="space-y-1.5 group/field">
-                                    <div className="flex justify-between items-center ml-2">
-                                        <label className="text-[8px] font-black text-teal-400 uppercase tracking-[0.3em] font-cyber italic">PASSPHRASE_KEY:</label>
-                                        <Key size={10} className="text-gray-700 group-focus-within/field:text-teal-500 transition-colors" />
-                                    </div>
-                                    <input
-                                        type="password"
-                                        className="cyber-input py-3 bg-black/60 border border-white/5 focus:border-teal-500/40 text-xs font-bold tracking-tight rounded-xl transition-all duration-500 placeholder:text-gray-800"
-                                        placeholder="••••••••••••"
-                                        onChange={e => setCredentials({ ...credentials, password: e.target.value })}
-                                        required
-                                    />
-                                    <div className="flex justify-end pr-2 pt-0.5">
-                                        <a href="#" className="text-[7px] text-gray-600 hover:text-teal-500 transition-colors uppercase font-black tracking-widest italic font-cyber">Lost_Access_Protocol?</a>
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full cyber-button cyber-button-primary py-3.5 text-xs font-black italic tracking-widest flex items-center justify-center gap-2 mt-6 shadow-[0_20px_40px_rgba(20,184,166,0.2)] group/btn"
-                                >
-                                    {loading ? (
-                                        <Activity className="animate-spin" size={14} />
-                                    ) : (
-                                        <>EXEC_DECRYPT_LOGIN <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" /></>
-                                    )}
-                                </button>
-                            </form>
-
-                            <div className="text-center space-y-6 relative z-10 pt-1">
-                                <Link to="/register" className="inline-block text-[9px] text-gray-600 hover:text-white transition-all duration-500 uppercase font-black tracking-[0.3em] font-cyber italic hover:underline underline-offset-8 decoration-teal-500/50">
-                                    <span className="text-teal-500 mr-2">&gt;</span> Initialize_New_Protocol_Node
-                                </Link>
-
-                                <div className="pt-6 border-t border-white/5 space-y-4">
-                                    <div className="flex items-center justify-center gap-3">
-                                        <div className="h-px w-6 bg-white/5"></div>
-                                        <div className="flex items-center gap-1.5 text-red-500/30">
-                                            <ShieldAlert size={12} />
-                                            <span className="text-[8px] font-black uppercase tracking-[0.3em] font-cyber">Bypass_Failsafe_Active</span>
-                                        </div>
-                                        <div className="h-px w-6 bg-white/5"></div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 justify-center">
-                                        {['CANDIDATE', 'RECRUITER', 'ADMIN'].map(role => (
-                                            <button
-                                                key={role}
-                                                type="button"
-                                                onClick={() => handleBypass(role)}
-                                                className="px-4 py-2 bg-white/[0.02] hover:bg-teal-500/10 border border-white/5 hover:border-teal-500/30 text-[8px] text-gray-600 hover:text-teal-400 font-black uppercase transition-all duration-500 rounded-md font-cyber italic tracking-[0.2em]"
-                                            >
-                                                {role}_NODE
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                <input
+                                    type="password"
+                                    className="cyber-input py-3 bg-black/60 border border-white/5 focus:border-teal-500/40 text-xs font-bold tracking-tight rounded-xl transition-all duration-500 placeholder:text-gray-800"
+                                    placeholder="••••••••••••"
+                                    onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+                                    required
+                                />
                             </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full cyber-button cyber-button-primary py-3.5 text-xs font-black italic tracking-widest flex items-center justify-center gap-2 mt-6 shadow-[0_20px_40px_rgba(20,184,166,0.2)] group/btn"
+                            >
+                                {loading ? (
+                                    <Activity className="animate-spin" size={14} />
+                                ) : (
+                                    <>EXEC_DECRYPT_LOGIN <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" /></>
+                                )}
+                            </button>
+                        </form>
+
+                        {/* Register Link */}
+                        <div className="text-center pt-2 relative z-10">
+                            <Link to="/register" className="inline-block text-[9px] text-gray-600 hover:text-white transition-all duration-500 uppercase font-black tracking-[0.3em] font-cyber italic hover:underline underline-offset-8 decoration-teal-500/50">
+                                <span className="text-teal-500 mr-2">&gt;</span> Initialize_New_Protocol_Node
+                            </Link>
                         </div>
                     </div>
                 </div>
 
+                {/* Footer */}
                 <div className="mt-6 flex justify-between items-center px-6 text-gray-800 font-black text-[8px] uppercase tracking-[0.5em] font-cyber italic">
-                    <span>Neurox_Security_Group_OS</span>
+                    <span>NeuroX_Security_Group_OS</span>
                     <span>v4.5.2_Build_Final</span>
                 </div>
             </div>

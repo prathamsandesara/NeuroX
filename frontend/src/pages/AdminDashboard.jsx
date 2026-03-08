@@ -28,7 +28,13 @@ export default function AdminDashboard() {
     const fetchAdminPortalData = async () => {
         try {
             const [logsRes, statsRes] = await Promise.all([
-                api.get("/api/admin/forensics").catch(() => ({ data: [] })),
+                api.get("/api/admin/forensics").catch(err => {
+                    const status = err.response?.status;
+                    if (status === 401) toast.error("NOT_AUTHENTICATED: Please log in as ADMIN");
+                    else if (status === 403) toast.error("ACCESS_DENIED: Your account role is not ADMIN");
+                    else toast.error("FORENSIC_API_OFFLINE: Backend unreachable");
+                    return { data: [] };
+                }),
                 api.get("/api/admin/stats").catch(() => ({ data: null }))
             ]);
             setForensicLogs(logsRes.data || []);
@@ -305,9 +311,9 @@ export default function AdminDashboard() {
                                                     <td className="px-6 py-4">
                                                         <div className="space-y-1.5">
                                                             <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded border tracking-widest ${f.riskLevel === 'CRITICAL' ? 'text-red-500 bg-red-500/10 border-red-500/20' :
-                                                                    f.riskLevel === 'MEDIUM' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' :
-                                                                        f.riskLevel === 'LOW' ? 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20' :
-                                                                            'text-teal-500 bg-teal-500/5 border-teal-500/10'
+                                                                f.riskLevel === 'MEDIUM' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' :
+                                                                    f.riskLevel === 'LOW' ? 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20' :
+                                                                        'text-teal-500 bg-teal-500/5 border-teal-500/10'
                                                                 }`}>{f.riskLevel}</span>
                                                             {f.anomalyFlags?.slice(0, 2).map((flag, i) => (
                                                                 <div key={i} className="text-[7px] font-black text-yellow-500/60 uppercase tracking-widest">{flag.replace(/_/g, ' ')}</div>

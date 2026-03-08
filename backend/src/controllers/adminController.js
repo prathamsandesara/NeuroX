@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const supabase = require('../config/supabase');
 const crypto = require('crypto');
 
 // Helper to generate a tamper-resistant hash for results

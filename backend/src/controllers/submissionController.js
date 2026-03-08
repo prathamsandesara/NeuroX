@@ -268,29 +268,43 @@ const getResult = async (req, res) => {
 
 const logAssessmentViolation = async (req, res) => {
     try {
-        const { assessment_id, candidate_id, violation_type, auto_submitted } = req.body;
+        const { assessment_id, candidate_id, violation_type, auto_submitted, biometrics } = req.body;
+        const userId = candidate_id || req.user.id;
 
-        // Fetch current violations
+        console.log(`[VIOLATION] User: ${req.user.email} | Type: ${violation_type} | Assessment: ${assessment_id}`);
+
+        // Fetch current submission
         const { data: submissions, error: fetchErr } = await supabase
             .from('submissions')
             .select('proctoring_violations, id, status')
-            .eq('user_id', candidate_id || req.user.id)
+            .eq('user_id', userId)
             .eq('assessment_id', assessment_id);
 
-        if (fetchErr) throw fetchErr;
+        if (fetchErr) {
+            console.error('[VIOLATION] Fetch error:', fetchErr);
+            throw fetchErr;
+        }
+
+        console.log(`[VIOLATION] Found ${submissions?.length || 0} submissions for user ${userId}`);
 
         // Find the active submission or the most recent one
-        const submission = submissions.find(s => s.status === 'IN_PROGRESS') || submissions[0];
+        const submission = submissions?.find(s => s.status === 'IN_PROGRESS') || submissions?.[0];
 
-        if (!submission) throw new Error('No submission found for violation logging');
+        if (!submission) {
+            console.error(`[VIOLATION] No submission found for user ${userId}, assessment ${assessment_id}`);
+            return res.status(404).json({ error: 'No submission found for violation logging' });
+        }
+
+        console.log(`[VIOLATION] Logging on submission ${submission.id}, current violations: ${submission.proctoring_violations?.length || 0}`);
 
         const updatedViolations = [...(submission.proctoring_violations || []), {
             type: violation_type,
             timestamp: new Date().toISOString(),
-            auto_submitted
+            auto_submitted,
+            biometrics: biometrics || null  // ← save biometrics with the violation
         }];
 
-        await supabase
+        const { error: updateErr } = await supabase
             .from('submissions')
             .update({
                 proctoring_violations: updatedViolations,
@@ -300,6 +314,12 @@ const logAssessmentViolation = async (req, res) => {
             })
             .eq('id', submission.id);
 
+        if (updateErr) {
+            console.error('[VIOLATION] Update error:', updateErr);
+            throw updateErr;
+        }
+
+        console.log(`[VIOLATION] ✅ Successfully logged. Total violations: ${updatedViolations.length}`);
         res.json({ message: 'Violation logged and session terminated' });
     } catch (error) {
         console.error('Violation Log Error:', error);

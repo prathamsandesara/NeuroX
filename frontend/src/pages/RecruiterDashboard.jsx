@@ -107,8 +107,8 @@ const RecruiterDashboard = () => {
             <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-blue-500/5 blur-[150px] pointer-events-none"></div>
 
             {/* Sub Navigation / Tab Bar */}
-            <div className="sticky top-[80px] z-50 px-8 py-4 mb-4 backdrop-blur-md bg-[#030303]/80 border-b border-white/5">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 py-4 px-8 glass-card border-white/5 bg-black/60 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+            <div className="sticky top-16 z-50 px-8 backdrop-blur-md bg-[#030303]/80 border-b border-white/5">
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 py-3 px-8 glass-card border-white/5 bg-black/60 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
                     <div className="flex items-center gap-5">
                         <div className="p-2.5 bg-teal-500/10 rounded-2xl border border-teal-500/20">
                             <Target className="text-teal-500" size={18} />

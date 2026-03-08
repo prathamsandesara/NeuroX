@@ -52,10 +52,11 @@ const Layout = () => {
                                     <div className="w-px h-6 bg-white/10"></div>
                                     <button
                                         onClick={handleLogout}
-                                        className="p-2 rounded-xl bg-white/[0.02] border border-white/5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/20 transition-all group"
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] border border-white/5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all group"
                                         title="TERMINATE_SESSION"
                                     >
-                                        <LogOut size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+                                        <LogOut size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest hidden sm:block">Logout</span>
                                     </button>
                                 </div>
                             ) : (
