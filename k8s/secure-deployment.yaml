@@ -1,0 +1,236 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neurox-secure
+---
+# --- DATABASE SECURE DEPLOYMENT ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurox-db
+  namespace: neurox-secure
+  labels:
+    app: neurox-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurox-db
+  template:
+    metadata:
+      labels:
+        app: neurox-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: neurox-secrets
+              key: db-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neurox-secrets
+              key: db-password
+        - name: POSTGRES_DB
+          value: neurox
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        volumeMounts:
+        - name: db-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: db-data
+        persistentVolumeClaim:
+          claimName: neurox-db-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurox-db
+  namespace: neurox-secure
+spec:
+  selector:
+    app: neurox-db
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# --- BACKEND SECURE DEPLOYMENT ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurox-backend
+  namespace: neurox-secure
+  labels:
+    app: neurox-backend
+spec:
+  replicas: 2 # High Availability
+  selector:
+    matchLabels:
+      app: neurox-backend
+  template:
+    metadata:
+      labels:
+        app: neurox-backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: backend
+        image: neurox-backend:latest
+        imagePullPolicy: Never # Local dev
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: neurox-secrets
+              key: database-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: neurox-secrets
+              key: jwt-secret
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp # Allow writing to /tmp even with readOnlyRootFilesystem
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurox-backend
+  namespace: neurox-secure
+spec:
+  selector:
+    app: neurox-backend
+  ports:
+  - port: 5000
+    targetPort: 5000
+---
+# --- FRONTEND SECURE DEPLOYMENT ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurox-frontend
+  namespace: neurox-secure
+  labels:
+    app: neurox-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: neurox-frontend
+  template:
+    metadata:
+      labels:
+        app: neurox-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: neurox-frontend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5173
+        env:
+        - name: VITE_API_URL
+          value: "http://neurox-backend:5000"
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurox-frontend
+  namespace: neurox-secure
+spec:
+  selector:
+    app: neurox-frontend
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5173
+---
+# --- NETWORK POLICIES (ZERO TRUST) ---
+# Default Deny All Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: neurox-secure
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# Allow Frontend -> Backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: neurox-secure
+spec:
+  podSelector:
+    matchLabels:
+      app: neurox-backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: neurox-frontend
+    ports:
+    - protocol: TCP
+      port: 5000
+---
+# Allow Backend -> DB
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-db
+  namespace: neurox-secure
+spec:
+  podSelector:
+    matchLabels:
+      app: neurox-db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: neurox-backend
+    ports:
+    - protocol: TCP
+      port: 5432
