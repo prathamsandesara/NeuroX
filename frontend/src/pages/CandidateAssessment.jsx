@@ -7,8 +7,9 @@ import {
     Shield, Play, Timer, ArrowRight, ArrowLeft,
     Lock, AlertCircle, Terminal, Cpu, Zap,
     CheckCircle2, Info, ChevronRight, Activity, Radar,
-    AlertTriangle, ShieldAlert
+    AlertTriangle, ShieldAlert, Camera, Mic, Wifi, Server
 } from "lucide-react";
+import { Editor } from "@monaco-editor/react";
 
 export default function CandidateAssessment() {
     const { assessmentId } = useParams();
@@ -252,16 +253,16 @@ export default function CandidateAssessment() {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center font-cyber text-teal-500 overflow-hidden relative">
-            <div className="noise-overlay"></div>
-            <div className="absolute inset-0 bg-teal-500/5 blur-[150px] animate-pulse"></div>
+        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 overflow-hidden relative">
+            <div className="noise-overlay" />
+            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
             <div className="relative">
-                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-8"></div>
+                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_2s_linear_infinite] mb-8" />
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Activity size={24} className="animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-black uppercase">Decrypting_Secure_Protocol...</div>
+            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Decrypting_Secure_Protocol...</div>
         </div>
     );
 
@@ -278,7 +279,7 @@ export default function CandidateAssessment() {
     const currentQuestions = questions.filter(q => q.type === currentSection);
 
     return (
-        <div className="min-h-screen bg-[#030303] text-white p-6 font-sans select-none pb-32 relative overflow-hidden">
+        <div className="min-h-screen bg-[#020204] text-slate-300 p-6 font-sans select-none pb-32 relative overflow-hidden">
             <ViolationModal
                 isOpen={isModalOpen}
                 type={violationType}
@@ -404,80 +405,112 @@ export default function CandidateAssessment() {
 }
 
 function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart }) {
+    const [scanState, setScanState] = useState(0); 
+
+    useEffect(() => {
+        if (!isFullscreen) return;
+        
+        let timer1 = setTimeout(() => setScanState(1), 1000);
+        let timer2 = setTimeout(() => setScanState(2), 2500);
+        let timer3 = setTimeout(() => setScanState(3), 4000);
+
+        return () => { clearTimeout(timer1); clearTimeout(timer2); clearTimeout(timer3); };
+    }, [isFullscreen]);
+
     return (
-        <div className="min-h-screen bg-[#030303] flex items-center justify-center p-12 font-sans overflow-hidden relative">
-            <div className="noise-overlay"></div>
-            <div className="scanline"></div>
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-teal-500/5 blur-[150px] pointer-events-none"></div>
+        <div className="min-h-screen bg-[#020204] flex items-center justify-center p-12 font-sans overflow-hidden relative">
+            <div className="noise-overlay" />
+            <div className="scanline" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-glow-teal opacity-20 pointer-events-none" />
 
-            <div className="max-w-3xl w-full glass-card p-12 space-y-12 relative overflow-hidden bg-black/60 border-teal-500/20 shadow-[0_50px_100px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-1000">
-                <div className="absolute top-0 right-0 p-10 opacity-[0.02] text-[120px] font-black font-cyber select-none italic tracking-tighter underline">SHELL</div>
+            <div className="max-w-4xl w-full glass-card p-12 space-y-12 relative overflow-hidden bg-black/60 border-teal-500/20 shadow-[0_50px_100px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-1000">
+                <div className="absolute top-0 right-0 p-10 opacity-[0.02] text-[120px] font-black font-cyber select-none italic tracking-tighter underline">AUTH</div>
 
-                <div className="space-y-6 relative">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-10 relative z-10 border-b border-white/5 pb-10">
                     <div className="flex items-center gap-6">
                         <div className="w-16 h-16 bg-teal-500 flex items-center justify-center rounded-[1.5rem] shadow-[0_0_40px_rgba(20,184,166,0.6)]">
                             <Shield size={32} className="text-black" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2.5 mb-1.5">
-                                <span className="px-2 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-400 font-black text-[9px] rounded uppercase tracking-[0.2em]">PROTOCOL_X</span>
+                                <span className="px-2 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-400 font-black text-[9px] rounded uppercase tracking-[0.2em]">PROTOCOL_X_V4.0</span>
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-glow"></div>
                             </div>
-                            <h1 className="text-3xl font-black text-white tracking-widest uppercase italic font-cyber leading-none">GATEWAY_LOCK</h1>
-                            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.6em] mt-2">NeuroX_Security_Enforcement_Kernel</p>
+                            <h1 className="text-3xl font-black text-white tracking-widest uppercase italic font-cyber leading-none">SYSTEM_CHECK</h1>
+                            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.6em] mt-2">NeuroX_Enforcement_Kernel</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InstructionItem icon={<Lock size={16} />} text="FULLSCREEN_MANDATORY" />
-                    <InstructionItem icon={<Shield size={16} />} text="AI_FORENSIC_MONITOR" />
-                    <InstructionItem icon={<Terminal size={16} />} text="KEY_DYNAMICS_LOG" />
-                    <InstructionItem icon={<Zap size={16} />} text="REALTIME_SYNC_L4" />
-                </div>
-
-                <div className="p-6 bg-red-500/5 border border-red-500/10 rounded-3xl space-y-4 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-3 opacity-5">
-                        <AlertTriangle size={48} className="text-red-500" />
-                    </div>
-                    <div className="flex items-center gap-3 text-red-500 relative z-10">
-                        <AlertCircle size={18} className="animate-pulse" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">CRITICAL_OPERATIONAL_NOTICE</span>
-                    </div>
-                    <p className="text-[10px] text-gray-500 leading-loose uppercase tracking-tighter font-bold relative z-10">
-                        Deployment of the assessment shell requires complete system isolation. Any unauthorized peripheral activity, window manipulation, or input anomalies will trigger an immediate session breach protocol and session lock.
-                    </p>
-                </div>
-
-                <div className="pt-4">
-                    {!isFullscreen ? (
+                {!isFullscreen ? (
+                    <div className="space-y-8 flex flex-col items-center justify-center py-10">
+                        <div className="w-24 h-24 border-2 border-teal-500/20 border-t-teal-500 rounded-full animate-[spin_3s_linear_infinite] mb-4 relative flex items-center justify-center">
+                            <Lock size={32} className="text-teal-500 animate-pulse absolute" />
+                        </div>
+                        <div className="text-center space-y-4">
+                            <h3 className="text-xl font-black text-white uppercase italic tracking-widest font-cyber">Secure Environment Required</h3>
+                            <p className="text-xs text-gray-500 uppercase tracking-widest leading-loose">The assessment kernel must run in full-screen mode to prevent unauthorized lateral movement.</p>
+                        </div>
                         <button
                             onClick={onEnterFullscreen}
-                            className="w-full cyber-button cyber-button-primary py-5 text-xs font-black italic tracking-widest shadow-2xl"
+                            className="cyber-button cyber-button-primary px-12 py-5 text-xs font-black italic tracking-widest shadow-[0_0_30px_rgba(20,184,166,0.2)] animate-glow"
                         >
-                            AUTHORIZE_IDENTITY_AND_LOCK_SHELL
+                            ENFORCE_ISOLATION_PROTOCOL
                         </button>
-                    ) : (
-                        <button
-                            onClick={onStart}
-                            className="w-full cyber-button bg-white text-black hover:bg-teal-400 py-5 text-xs font-black italic tracking-widest flex items-center justify-center gap-4 animate-glow group transition-all"
-                        >
-                            <Play size={18} className="group-hover:scale-125 transition-transform" /> INITIALIZE_NEURAL_LINK
-                        </button>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
+                        <div className="space-y-6">
+                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Terminal size={14}/> SYSTEM_AUDIT_STREAM:</h3>
+                            <div className="p-6 bg-black/80 border border-white/5 rounded-2xl font-mono text-xs leading-loose text-gray-500 h-[280px] overflow-hidden relative shadow-inner">
+                                <div className="absolute top-0 left-0 w-full h-8 bg-gradient-to-b from-black/80 to-transparent z-10 pointer-events-none"></div>
+                                <div className="absolute bottom-0 left-0 w-full h-8 bg-gradient-to-t from-black/80 to-transparent z-10 pointer-events-none"></div>
+                                
+                                <div className="space-y-2 translate-y-2 animate-in slide-in-from-bottom-12 duration-1000">
+                                    <div className="text-teal-500/50">[{new Date().toISOString().split('T')[1].slice(0,-1)}] INITIALIZING_KERNEL...</div>
+                                    <div className="text-white">[{new Date().toISOString().split('T')[1].slice(0,-1)}] FULLSCREEN_LOCK_ACQUIRED</div>
+                                    {scanState >= 1 && <div className="text-teal-400">[{new Date().toISOString().split('T')[1].slice(0,-1)}] BIOMETRIC_SENSORS_ACTIVE</div>}
+                                    {scanState >= 2 && <div className="text-blue-400">[{new Date().toISOString().split('T')[1].slice(0,-1)}] NETWORK_LATENCY_NOMINAL</div>}
+                                    {scanState >= 3 && <div className="text-green-400 font-bold flash">[{new Date().toISOString().split('T')[1].slice(0,-1)}] ALL_SYSTEMS_GO_READY_FOR_EXECUTION</div>}
+                                    {scanState < 3 && <div className="animate-pulse text-yellow-500">_waiting_for_node_response...</div>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Server size={14}/> HARDWARE_STATUS:</h3>
+                            <div className="space-y-4">
+                                <HardwareCheck icon={<Camera size={18} />} label="VISUAL_NODE (WEBCAM)" status={scanState >= 1} />
+                                <HardwareCheck icon={<Mic size={18} />} label="AUDIO_NODE (MIC)" status={scanState >= 1} />
+                                <HardwareCheck icon={<Wifi size={18} />} label="CONNECTION_STABILITY" status={scanState >= 2} />
+                                <HardwareCheck icon={<Activity size={18} />} label="ENVIRONMENT_SCAN" status={scanState >= 3} />
+                            </div>
+
+                            <button
+                                onClick={onStart}
+                                disabled={scanState < 3}
+                                className={`w-full py-5 text-xs font-black italic tracking-widest flex items-center justify-center gap-4 transition-all duration-700 rounded-2xl
+                                    ${scanState === 3 ? 'cyber-button bg-white text-black hover:bg-teal-400 animate-glow shadow-[0_0_30px_rgba(255,255,255,0.3)]' : 'bg-white/5 text-gray-600 border border-white/10 cursor-not-allowed'}
+                                `}
+                            >
+                                <Play size={18} className={scanState === 3 ? "scale-110" : ""} /> INITIALIZE_NEURAL_LINK
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
-function InstructionItem({ icon, text }) {
+function HardwareCheck({ icon, label, status }) {
     return (
-        <div className="flex items-center gap-4 px-6 py-4 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-teal-500/40 transition-all duration-500 cursor-default">
-            <div className="text-teal-500/40 group-hover:text-teal-500 transition-colors duration-500">
-                {icon}
+        <div className={`flex items-center justify-between p-4 rounded-xl border ${status ? 'bg-teal-500/5 border-teal-500/20 text-teal-400' : 'bg-white/[0.02] border-white/5 text-gray-600'} transition-all duration-700`}>
+            <div className="flex items-center gap-4">
+                <div className={status ? 'animate-pulse' : ''}>{icon}</div>
+                <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
             </div>
-            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors duration-500">{text}</span>
+            <div className={`w-2 h-2 rounded-full ${status ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.8)]' : 'bg-gray-700'}`}></div>
         </div>
     );
 }
@@ -519,7 +552,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
 
     if (question.type === "CODING") {
         return (
-            <div className="glass-card flex flex-col lg:flex-row gap-0 overflow-hidden min-h-[750px] border-white/5 hover:border-teal-500/10 shadow-[0_50px_100px_rgba(0,0,0,0.5)] bg-black/40 group">
+            <div className="glass-card flex flex-col lg:flex-row gap-0 overflow-hidden min-h-[750px] border-white/5 hover:border-teal-500/10 shadow-[0_50px_100px_rgba(0,0,0,0.5)] bg-[#020204]/80 group">
                 <div className="scanline opacity-[0.03]"></div>
                 {/* Problem Meta */}
                 <div className="lg:w-[380px] p-10 border-r border-white/5 bg-white/[0.01] overflow-y-auto space-y-10 custom-scrollbar relative z-10">
@@ -580,16 +613,32 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                         </button>
                     </div>
 
-                    <div className="flex-1 relative group bg-black/40">
-                        <div className="absolute top-0 left-0 w-full h-full p-1 w-full flex pointer-events-none opacity-[0.02]">
+                    <div className="flex-1 relative group bg-[#020204] pt-2">
+                        <div className="absolute top-0 left-0 w-full h-full p-1 opacity-[0.02] pointer-events-none z-10">
                             <div className="w-full h-full border-2 border-white/5 rounded-sm"></div>
                         </div>
-                        <textarea
+                        <Editor
+                            height="100%"
+                            theme="vs-dark"
+                            language={selectedLang === 'cpp' ? 'cpp' : selectedLang}
                             value={value?.code || value || ''}
-                            onChange={(e) => onChange(e.target.value, selectedLang)}
-                            className="w-full h-full bg-transparent p-10 text-teal-400 font-mono text-sm focus:outline-none transition-all resize-none leading-relaxed selection:bg-teal-500/30 font-bold"
-                            placeholder="// Initializing secure input stream..."
-                            spellCheck="false"
+                            onChange={(newValue) => onChange(newValue, selectedLang)}
+                            options={{
+                                minimap: { enabled: false },
+                                fontSize: 13,
+                                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                                padding: { top: 20, bottom: 20 },
+                                cursorBlinking: "smooth",
+                                cursorSmoothCaretAnimation: "on",
+                                smoothScrolling: true,
+                                lineNumbersMinChars: 3,
+                                scrollbar: {
+                                    verticalScrollbarSize: 8,
+                                    horizontalScrollbarSize: 8,
+                                    verticalSliderSize: 4,
+                                    horizontalSliderSize: 4
+                                }
+                            }}
                         />
                     </div>
 

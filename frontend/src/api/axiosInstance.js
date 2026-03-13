@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+const getBaseURL = () => {
+    // If explicitly provided via .env (e.g. for Production), use that
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (envUrl && !envUrl.includes('localhost') && import.meta.env.PROD) {
+        return envUrl;
+    }
+    // Otherwise, dynamically infer the backend host based on how you accessed the frontend in the browser
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+};
+
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000',
+    baseURL: getBaseURL(),
     withCredentials: true, // Important for cookies
 });
 

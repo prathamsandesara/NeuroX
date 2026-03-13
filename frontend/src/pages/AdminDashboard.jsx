@@ -13,6 +13,7 @@ import toast from "react-hot-toast";
 
 export default function AdminDashboard() {
     const [forensicLogs, setForensicLogs] = useState([]);
+    const [auditLogs, setAuditLogs] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -27,7 +28,7 @@ export default function AdminDashboard() {
 
     const fetchAdminPortalData = async () => {
         try {
-            const [logsRes, statsRes] = await Promise.all([
+            const [logsRes, statsRes, auditRes] = await Promise.all([
                 api.get("/api/admin/forensics").catch(err => {
                     const status = err.response?.status;
                     if (status === 401) toast.error("NOT_AUTHENTICATED: Please log in as ADMIN");
@@ -35,10 +36,12 @@ export default function AdminDashboard() {
                     else toast.error("FORENSIC_API_OFFLINE: Backend unreachable");
                     return { data: [] };
                 }),
-                api.get("/api/admin/stats").catch(() => ({ data: null }))
+                api.get("/api/admin/stats").catch(() => ({ data: null })),
+                api.get("/api/admin/audit-logs").catch(() => ({ data: [] }))
             ]);
             setForensicLogs(logsRes.data || []);
             if (statsRes.data) setStats(statsRes.data);
+            setAuditLogs(auditRes.data || []);
         } catch (error) {
             console.error("Forensic sync failed:", error);
             setForensicLogs([]);
@@ -98,24 +101,23 @@ export default function AdminDashboard() {
     const totalViolations = forensicLogs.reduce((acc, f) => acc + (f.violationsCount || 0), 0);
 
     if (loading) return (
-        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center font-cyber text-teal-500 relative overflow-hidden">
-            <div className="noise-overlay"></div>
-            <div className="absolute inset-0 bg-teal-500/5 blur-[150px] animate-pulse"></div>
+        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 relative overflow-hidden">
+            <div className="noise-overlay" />
+            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
             <div className="relative">
-                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-8"></div>
+                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_2s_linear_infinite] mb-8" />
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Shield size={24} className="animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-black uppercase">Initializing_Forensic_Kernel...</div>
+            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Initializing_Forensic_Kernel...</div>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-[#030303] text-gray-400 font-sans cyber-grid selection:bg-teal-500/30 relative overflow-hidden">
-            <div className="noise-overlay"></div>
-            <div className="scanline"></div>
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-teal-500/5 blur-[200px] pointer-events-none"></div>
+        <div className="min-h-screen bg-[#020204] text-slate-400 font-sans selection:bg-teal-500/30 relative overflow-hidden">
+            <div className="noise-overlay" />
+            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-glow-teal opacity-20 pointer-events-none" />
 
             {/* Header */}
             <header className="sticky top-0 z-[100] border-b border-white/5 bg-black/60 backdrop-blur-3xl px-12 py-5">
@@ -168,6 +170,37 @@ export default function AdminDashboard() {
                                 <Terminal size={18} className="text-teal-500" /> EVENT_STREAM
                             </h3>
                             <SecurityTerminal />
+                        </section>
+
+                        {/* Live Threat Map */}
+                        <section className="glass-card p-8 border-white/5 bg-[#020204]/80 relative overflow-hidden group min-h-[300px]">
+                            <div className="scanline opacity-[0.03]"></div>
+                            <h3 className="text-xs font-black text-white uppercase mb-6 flex items-center gap-4 tracking-[0.3em] font-cyber">
+                                <Globe size={18} className="text-blue-500" /> LIVE_THREAT_MAP
+                            </h3>
+                            <div className="relative w-full h-48 border border-white/10 rounded-2xl bg-black/40 overflow-hidden flex items-center justify-center">
+                                {/* Grid map background */}
+                                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHJlY3Qgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIvPjwvc3ZnPg==')] opacity-50"></div>
+                                {/* Scanning line */}
+                                <div className="absolute top-0 left-0 w-full h-1 bg-teal-500/50 shadow-[0_0_15px_rgba(20,184,166,0.8)] animate-[scan_3s_linear_infinite]"></div>
+                                
+                                {filteredLogs.slice(0, 5).map((log, i) => {
+                                    const top = Math.random() * 80 + 10;
+                                    const left = Math.random() * 80 + 10;
+                                    const isCritical = log.riskLevel === 'CRITICAL';
+                                    return (
+                                        <div key={i} className="absolute flex flex-col items-center" style={{ top: `${top}%`, left: `${left}%` }}>
+                                            <div className={`w-3 h-3 rounded-full ${isCritical ? 'bg-red-500 animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]' : 'bg-yellow-500 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]'} shadow-[0_0_10px_currentColor]`}></div>
+                                            <div className={`mt-2 text-[8px] font-black uppercase font-mono tracking-widest ${isCritical ? 'text-red-400' : 'text-yellow-400'}`}>
+                                                {log.metadata?.ip?.split(',')[0].trim() || 'UNKNOWN_IP'}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {anomalyCount === 0 && criticalCount === 0 && (
+                                     <div className="animate-pulse text-[10px] font-black uppercase tracking-widest text-teal-500 border border-teal-500/20 px-4 py-1.5 rounded-full bg-teal-500/10 backdrop-blur-sm z-10 font-cyber">SCANNING_GLOBAL_NODES...</div>
+                                )}
+                            </div>
                         </section>
 
                         {/* Critical Threats Panel */}
@@ -257,7 +290,7 @@ export default function AdminDashboard() {
 
                                 {/* Filter Tabs */}
                                 <div className="flex gap-2">
-                                    {["ALL", "THREATS", "AUTH", "SESSIONS"].map(tab => (
+                                    {["ALL", "THREATS", "AUTH", "SESSIONS", "AUDIT"].map(tab => (
                                         <button key={tab} onClick={() => setActiveTab(tab)}
                                             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-xl border transition-all font-cyber ${activeTab === tab ? 'bg-teal-500 text-black border-teal-500' : 'bg-white/5 text-gray-500 border-white/10 hover:border-white/20'}`}>
                                             {tab}
@@ -271,16 +304,54 @@ export default function AdminDashboard() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-black/60 sticky top-0 z-10 border-b border-white/5">
-                                            <th className="px-6 py-4 text-[9px] font-black text-teal-500 font-cyber uppercase tracking-[0.3em]">Subject</th>
-                                            <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">IP / Device</th>
-                                            <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">Risk & Anomalies</th>
-                                            <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-center">Integrity</th>
-                                            <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-right">Timestamp</th>
-                                            <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-center">Detail</th>
+                                            {activeTab === 'AUDIT' ? (
+                                                <>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-teal-500 font-cyber uppercase tracking-[0.3em]">Event Type</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">Subject / Email</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">IP & Client</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">Risk Level</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-right">Timestamp</th>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-teal-500 font-cyber uppercase tracking-[0.3em]">Subject</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">IP / Device</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em]">Risk & Anomalies</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-center">Integrity</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-right">Timestamp</th>
+                                                    <th className="px-6 py-4 text-[9px] font-black text-gray-500 font-cyber uppercase tracking-[0.3em] text-center">Detail</th>
+                                                </>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/[0.03]">
-                                        {filteredLogs.map((f) => (
+                                        {activeTab === 'AUDIT' ? (
+                                            auditLogs.length > 0 ? auditLogs.map((log) => (
+                                                <tr key={log.id} className="group hover:bg-white/[0.02] transition-colors">
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-white font-black uppercase text-xs tracking-tighter">{log.event_type}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">{log.email || 'System'}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-[10px] text-gray-500 font-mono">{log.ip_address}</span>
+                                                        <div className="text-[8px] text-gray-600 truncate max-w-[150px]">{log.user_agent}</div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded border tracking-widest ${log.risk_level === 'CRITICAL' ? 'text-red-500 bg-red-500/10 border-red-500/20' : log.risk_level === 'MEDIUM' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-teal-500 bg-teal-500/5 border-teal-500/10'}`}>{log.risk_level}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <span className="text-[10px] text-white font-black uppercase">{new Date(log.created_at).toLocaleString()}</span>
+                                                    </td>
+                                                </tr>
+                                            )) : (
+                                                <tr>
+                                                    <td colSpan={5} className="py-20 text-center text-gray-600 uppercase text-[10px] font-black tracking-widest">No audit logs found. Ensure security_audit_log SQL is run.</td>
+                                                </tr>
+                                            )
+                                        ) : (
+                                            filteredLogs.map((f) => (
                                             <>
                                                 <tr key={f.id} className="group hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setExpandedRow(expandedRow === f.id ? null : f.id)}>
                                                     <td className="px-6 py-4 relative">
@@ -435,8 +506,9 @@ export default function AdminDashboard() {
                                                     </tr>
                                                 )}
                                             </>
-                                        ))}
-                                        {filteredLogs.length === 0 && (
+                                        ))
+                                        )}
+                                        {activeTab !== 'AUDIT' && filteredLogs.length === 0 && (
                                             <tr>
                                                 <td colSpan={6} className="py-20 text-center">
                                                     <Shield size={40} className="mx-auto mb-4 text-gray-700" />

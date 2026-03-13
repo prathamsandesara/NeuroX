@@ -141,6 +141,26 @@ exports.getForensicLogs = async (req, res) => {
     }
 };
 
+exports.getAuditLogs = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('security_audit_log')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+            
+        if (error) {
+            console.error('Audit fetch error (table might not exist yet):', error);
+            return res.json([]); // return empty if not provisioned
+        }
+
+        res.json(data || []);
+    } catch (error) {
+        console.error('Audit Fetch Exception:', error);
+        res.status(500).json({ error: 'Failed' });
+    }
+};
+
 exports.logAudit = async (req, res) => {
     try {
         const { action, resourceId, details } = req.body;

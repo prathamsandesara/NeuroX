@@ -1,73 +1,68 @@
 import { Link } from 'react-router-dom';
-import ParticlesBackground from '../components/ParticlesBackground';
-import { Shield, Zap, Terminal, Cpu, ArrowRight, Activity, Disc } from 'lucide-react';
+import { Shield, Zap, Terminal, Cpu, ArrowRight, Activity, Disc, Lock, Fingerprint } from 'lucide-react';
 
 const LandingPage = () => {
     return (
-        <div className="relative min-h-[calc(100vh-80px)] overflow-hidden font-sans bg-transparent cyber-grid selection:bg-teal-500/30">
-            <ParticlesBackground />
-
-            {/* Cinematic Neural HUB Underlay */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] pointer-events-none opacity-20">
-                <div className="absolute inset-0 border border-teal-500/10 rounded-full animate-[spin_60s_linear_infinite]"></div>
-                <div className="absolute inset-[100px] border border-blue-500/5 rounded-full animate-[spin_40s_linear_infinite_reverse]"></div>
-                <div className="absolute inset-[200px] border border-white/5 rounded-full animate-[spin_80s_linear_infinite]"></div>
+        <div className="relative min-h-screen overflow-hidden bg-[#020204] selection:bg-teal-500/30">
+            {/* Background Effects */}
+            <div className="noise-overlay" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] bg-glow-teal opacity-50 pointer-events-none" />
+            
+            {/* Neural Background Elements */}
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[1000px] h-[1000px] pointer-events-none opacity-10">
+                <div className="absolute inset-0 border border-teal-500/20 rounded-full animate-[spin_60s_linear_infinite]" />
+                <div className="absolute inset-[150px] border border-blue-500/10 rounded-full animate-[spin_40s_linear_infinite_reverse]" />
             </div>
 
-            <main className="relative z-10 flex flex-col items-center justify-center pt-20 pb-24 text-center px-6">
-                <div className="max-w-6xl space-y-12">
-                    {/* Status Badge */}
-                    <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full border border-teal-500/20 bg-teal-500/5 backdrop-blur-3xl animate-in fade-in slide-in-from-top duration-1000">
-                        <div className="relative">
-                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-ping absolute inset-0"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500 relative"></div>
-                        </div>
-                        <span className="text-teal-400 text-[9px] font-black uppercase tracking-[0.5em] font-cyber">Neural_Network_Auth_Active</span>
-                    </div>
+            <main className="relative z-10 flex flex-col items-center justify-center pt-32 pb-24 px-6 max-w-7xl mx-auto">
+                {/* Status Badge */}
+                <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-xl mb-12 animate-soft-float">
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-teal-400/80 font-cyber">System_Status: Operational</span>
+                </div>
 
-                    <div className="space-y-4">
-                        <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-[0.85] uppercase italic font-cyber animate-in zoom-in duration-1000">
-                            <span className="text-premium-gradient block">SECURE</span>
-                            <span className="text-cyber-gradient filter drop-shadow-[0_0_20px_rgba(20,184,166,0.2)]">
-                                TALENT_FORGE
-                            </span>
-                        </h1>
-                        <p className="text-gray-500 max-w-xl mx-auto text-[10px] md:text-sm font-bold leading-relaxed uppercase tracking-tighter animate-in fade-in duration-1000 delay-300 opacity-60">
-                            Enterprise-grade neural ecosystem for deep-learning assessment parsing, sandbox execution, and forensic candidate auditing.
-                        </p>
-                    </div>
+                <div className="text-center space-y-8 mb-20">
+                    <h1 className="text-6xl md:text-8xl font-black tracking-tight leading-none uppercase font-cyber italic">
+                        <span className="text-premium-gradient block mb-2">NEUROX</span>
+                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-teal-400 via-emerald-400 to-blue-500 animate-pulse">
+                            SECURE_V3
+                        </span>
+                    </h1>
+                    
+                    <p className="max-w-2xl mx-auto text-slate-400 text-sm md:text-base font-medium leading-relaxed opacity-80">
+                        The ultimate AI-driven assessment ecosystem. Engineered for <span className="text-teal-400">Zero-Trust</span> integrity, 
+                        automated forensic auditing, and enterprise-grade sandbox execution.
+                    </p>
 
-                    <div className="flex flex-col sm:flex-row gap-5 justify-center items-center pt-6 animate-in fade-in slide-in-from-bottom duration-1000 delay-500">
-                        <Link to="/register" className="cyber-button cyber-button-primary px-10 py-3 text-[10px] group">
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
+                        <Link to="/register" className="cyber-button cyber-button-primary group w-64">
                             INITIALIZE_PROTOCOL <ArrowRight size={14} className="group-hover:translate-x-1.5 transition-transform" />
                         </Link>
-                        <Link to="/login" className="px-10 py-3 border border-white/5 bg-white/[0.02] text-white font-black text-[10px] uppercase tracking-[0.3em] hover:bg-white/5 hover:border-white/10 transition-all rounded-[1rem] backdrop-blur-3xl shadow-2xl">
-                            VIEW_GATEWAY
+                        <Link to="/login" className="cyber-button cyber-button-secondary w-64">
+                            ACCESS_GATEWAY
                         </Link>
                     </div>
                 </div>
 
                 {/* Industrial Feature Grid */}
-                <div className="mt-16 grid grid-cols-1 md:grid-cols-4 gap-5 w-full max-w-6xl animate-in fade-in slide-in-from-bottom duration-1000 delay-700">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
                     <FeatureCard
-                        icon={<Terminal className="text-teal-400" size={24} />}
-                        title="KERNEL_EXEC"
-                        desc="Hardware-isolated sandbox supporting 50+ languages with O(1) boot time."
+                        icon={<Fingerprint className="text-teal-400" size={24} />}
+                        title="Biometric_Auth"
+                        desc="Advanced typing dynamics and behavioral analysis for foolproof candidate verification."
                     />
                     <FeatureCard
-                        icon={<Cpu className="text-blue-400" size={24} />}
-                        title="TRANSFORMER"
-                        desc="Neural parsing engine with semantic skill mapping and JD intelligence."
+                        icon={<Terminal className="text-blue-400" size={24} />}
+                        title="Sandbox_Exec"
+                        desc="Hardware-isolated kernel environments for secure, real-time code evaluation."
                     />
                     <FeatureCard
-                        icon={<Activity className="text-purple-400" size={24} />}
-                        title="INTEGRITY_HUD"
-                        desc="Real-time forensic auditing with behavioral anomaly detection."
-                    />
-                    <FeatureCard
-                        icon={<Shield className="text-white opacity-40" size={24} />}
-                        title="SECURE_VAULT"
-                        desc="Tamper-proof result hashing and distributed identity management."
+                        icon={<Activity className="text-emerald-400" size={24} />}
+                        title="Forensic_Audit"
+                        desc="Live 360° monitoring with automated threat detection and focus-loss tracking."
                     />
                 </div>
             </main>
@@ -76,20 +71,23 @@ const LandingPage = () => {
 };
 
 const FeatureCard = ({ icon, title, desc }) => (
-    <div className="glass-card p-6 text-left group hover:translate-y-[-3px] transition-all duration-700 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-3 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
-            <Disc className="animate-spin-slow" size={80} />
+    <div className="glass-card p-8 group hover:border-teal-500/40 relative overflow-hidden">
+        <div className="absolute -right-4 -top-4 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity">
+            <Disc className="animate-[spin_10s_linear_infinite]" size={120} />
         </div>
 
-        <div className="mb-5 p-3 bg-white/5 rounded-[1rem] w-fit group-hover:bg-teal-500/10 transition-all duration-500 group-hover:scale-110">
+        <div className="mb-6 p-4 bg-white/5 rounded-2xl w-fit group-hover:scale-110 transition-transform duration-500">
             {icon}
         </div>
 
-        <div className="text-white text-[9px] font-black mb-3 tracking-[0.5em] font-cyber uppercase">// {title}</div>
-        <div className="text-gray-500 text-[10px] font-bold leading-relaxed tracking-tight group-hover:text-gray-300 transition-colors uppercase">{desc}</div>
+        <h3 className="text-white text-xs font-black mb-4 tracking-[0.3em] font-cyber uppercase">// {title}</h3>
+        <p className="text-slate-400 text-sm font-medium leading-relaxed group-hover:text-slate-200 transition-colors">
+            {desc}
+        </p>
 
-        <div className="mt-6 h-[1px] w-8 bg-white/5 group-hover:w-full group-hover:bg-teal-500/20 transition-all duration-1000 ease-in-out"></div>
+        <div className="mt-8 h-px w-10 bg-teal-500/20 group-hover:w-full group-hover:bg-teal-500/40 transition-all duration-700" />
     </div>
 );
 
 export default LandingPage;
+

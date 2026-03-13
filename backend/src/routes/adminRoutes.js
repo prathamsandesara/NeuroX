@@ -9,6 +9,7 @@ router.use(authMiddleware);
 router.use(roleMiddleware(['ADMIN']));
 
 router.get('/forensics', adminController.getForensicLogs);
+router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/stats', adminController.getSystemStats);
 router.post('/audit', adminController.logAudit);
 

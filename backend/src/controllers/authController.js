@@ -3,9 +3,10 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { sendEmail } = require('../config/email');
 const crypto = require('crypto');
+const { logSecurityEvent } = require('../services/auditService');
 
 const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
 };
 
 const register = async (req, res) => {
@@ -130,6 +131,7 @@ const login = async (req, res) => {
         const lockoutUntil = currentMeta.lockout_until ? new Date(currentMeta.lockout_until) : null;
         if (lockoutUntil && lockoutUntil > new Date()) {
             const minutesLeft = Math.ceil((lockoutUntil - new Date()) / 60000);
+            await logSecurityEvent('LOGIN_LOCKED', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], { minutesLeft }, 'CRITICAL');
             return res.status(429).json({ error: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).` });
         }
 
@@ -149,6 +151,7 @@ const login = async (req, res) => {
                 updatedMeta.failed_attempts = 0;
             }
             supabase.from('users').update({ security_metadata: updatedMeta }).eq('id', user.id).then();
+            await logSecurityEvent('LOGIN_FAILED', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], { failedAttempts }, failedAttempts >= 5 ? 'CRITICAL' : 'MEDIUM');
             return res.status(401).json({ error: `Invalid credentials. ${5 - failedAttempts > 0 ? (5 - failedAttempts) + ' attempts remaining before lockout.' : 'Account locked.'}` });
         }
 
@@ -189,6 +192,8 @@ const login = async (req, res) => {
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
             maxAge: 24 * 60 * 60 * 1000
         });
+
+        await logSecurityEvent('LOGIN_SUCCESS', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], { role: user.role }, 'LOW');
 
         res.status(200).json({
             message: 'Logged in successfully',

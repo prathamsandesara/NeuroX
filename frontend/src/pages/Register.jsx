@@ -3,9 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-    UserPlus, Shield, ArrowRight, Fingerprint,
-    Database, Cpu, Zap, Activity, ShieldAlert,
-    Key, User, Globe, ChevronRight
+    UserPlus, ArrowRight, Fingerprint, Database, Cpu, Activity, ShieldAlert,
+    Key, Globe, ChevronRight, Lock
 } from 'lucide-react';
 
 const Register = () => {
@@ -29,80 +28,72 @@ const Register = () => {
     };
 
     return (
-        <div className="min-h-screen bg-[#030303] relative flex items-center justify-center font-sans py-20 px-8 overflow-hidden select-none">
+        <div className="min-h-screen bg-[#020204] relative flex items-center justify-center p-6 overflow-hidden">
             {/* Cinematic Background Elements */}
-            <div className="noise-overlay"></div>
-            <div className="scanline"></div>
-            <div className="absolute top-0 right-1/2 translate-x-1/2 w-[800px] h-[400px] bg-blue-500/5 blur-[150px] pointer-events-none animate-pulse"></div>
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-500/5 blur-[100px] pointer-events-none"></div>
+            <div className="noise-overlay" />
+            <div className="absolute top-0 right-1/2 translate-x-1/2 w-full h-[600px] bg-glow-teal opacity-30 pointer-events-none" />
 
-            <div className="w-full max-w-lg relative z-10 animate-in fade-in zoom-in-95 duration-1000">
-                <div className="glass-card p-0 bg-black/60 border-blue-500/20 shadow-[0_50px_100px_rgba(0,0,0,0.8)] overflow-hidden group">
+            <div className="w-full max-w-[460px] relative z-10">
+                <div className="glass-card overflow-hidden border-white/5 bg-white/[0.02]">
                     {/* Kernel Provisioning Header HUD */}
-                    <div className="px-6 py-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="flex gap-1 border border-white/10 p-0.5 rounded-full">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-glow"></div>
+                    <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01] flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="flex gap-1">
+                                <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse" />
                             </div>
-                            <span className="text-[9px] font-black text-gray-600 uppercase tracking-[0.4em] font-cyber ml-2">Kernel_Provisioning_v3.5</span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] font-cyber">Node_Init_Sequence</span>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                            <Database size={10} className="text-blue-500/50" />
-                            <span className="text-[8px] text-gray-700 font-black uppercase tracking-widest">ECC_VAULT_ACTIVE</span>
-                        </div>
+                        <Database size={12} className="text-blue-500/40" />
                     </div>
 
-                    <div className="p-10 md:p-14 space-y-10 relative">
-                        {/* Internal HUD Elements */}
-                        <div className="absolute top-0 right-0 p-8 opacity-5 italic text-[60px] font-black font-cyber select-none pointer-events-none underline decoration-blue-500/20 decoration-4 underline-offset-[-15px]">INIT</div>
-
-                        <div className="text-center space-y-5 relative z-10">
-                            <div className="mx-auto w-16 h-16 bg-blue-500 flex items-center justify-center rounded-[1.5rem] shadow-[0_0_40px_rgba(59,130,246,0.4)] transition-transform duration-700 group-hover:scale-110 mb-6 border border-white/10">
-                                <UserPlus className="text-black" size={32} />
+                    <div className="p-10 md:px-12 md:py-10 space-y-8">
+                        <div className="text-center space-y-4">
+                            <div className="mx-auto w-16 h-16 bg-blue-500/10 flex items-center justify-center rounded-2xl border border-blue-500/20 shadow-neon mb-6">
+                                <UserPlus className="text-blue-400" size={32} />
                             </div>
-                            <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase font-cyber leading-none">NODE_INIT</h1>
-                            <div className="flex items-center justify-center gap-3">
-                                <div className="h-px w-6 bg-blue-500/20"></div>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.5em] font-black">Register_Protocol_Identity</p>
-                                <div className="h-px w-6 bg-blue-500/20"></div>
-                            </div>
+                            <h1 className="text-3xl font-black text-white tracking-tight uppercase font-cyber italic">
+                                SYSTEM_ENROLL
+                            </h1>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-[0.4em] font-bold">
+                                Establish_Secure_Identity
+                            </p>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
-                            <div className="space-y-2 group/field">
-                                <div className="flex justify-between items-center ml-2">
-                                    <label className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] font-cyber italic">IDENTIFIER_LINK:</label>
-                                    <Globe size={10} className="text-gray-700 group-focus-within/field:text-blue-500 transition-colors" />
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-blue-400/80 uppercase tracking-widest ml-1 font-cyber">IDENTIFIER_LINK</label>
+                                <div className="relative">
+                                    <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+                                    <input
+                                        type="email"
+                                        className="cyber-input pl-12 focus:border-blue-500/50"
+                                        placeholder="subject@neurox.io"
+                                        onChange={e => setForm({ ...form, email: e.target.value })}
+                                        required
+                                    />
                                 </div>
-                                <input
-                                    type="email"
-                                    className="cyber-input py-4 bg-black/60 border border-white/5 focus:border-blue-500/40 text-xs font-bold tracking-tight rounded-[1rem] transition-all duration-500 placeholder:text-gray-800"
-                                    placeholder="subject@neurox.net"
-                                    onChange={e => setForm({ ...form, email: e.target.value })}
-                                    required
-                                />
                             </div>
-                            <div className="space-y-2 group/field">
-                                <div className="flex justify-between items-center ml-2">
-                                    <label className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] font-cyber italic">ENCRYPTION_KEY:</label>
-                                    <Key size={10} className="text-gray-700 group-focus-within/field:text-blue-500 transition-colors" />
+                            
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-blue-400/80 uppercase tracking-widest ml-1 font-cyber">ENCRYPTION_KEY</label>
+                                <div className="relative">
+                                    <Key size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+                                    <input
+                                        type="password"
+                                        className="cyber-input pl-12 focus:border-blue-500/50"
+                                        placeholder="••••••••••••"
+                                        onChange={e => setForm({ ...form, password: e.target.value })}
+                                        required
+                                    />
                                 </div>
-                                <input
-                                    type="password"
-                                    className="cyber-input py-4 bg-black/60 border border-white/5 focus:border-blue-500/40 text-xs font-bold tracking-tight rounded-[1rem] transition-all duration-500 placeholder:text-gray-800"
-                                    placeholder="••••••••••••"
-                                    onChange={e => setForm({ ...form, password: e.target.value })}
-                                    required
-                                />
                             </div>
+
                             <div className="space-y-2 group/field">
-                                <div className="flex justify-between items-center ml-2">
-                                    <label className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] font-cyber italic">NODE_PERM_LEVEL:</label>
-                                    <Cpu size={10} className="text-gray-700 group-focus-within/field:text-blue-500 transition-colors" />
-                                </div>
+                                <label className="text-[10px] font-bold text-blue-400/80 uppercase tracking-widest ml-1 font-cyber">ACCESS_LEVEL</label>
                                 <div className="relative group/select">
+                                    <Cpu size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 z-10" />
                                     <select
-                                        className="cyber-input py-4 bg-black/60 border border-white/5 focus:border-blue-500/40 text-xs font-bold tracking-tight rounded-[1rem] transition-all duration-500 appearance-none cursor-pointer pr-10 outline-none"
+                                        className="cyber-input pl-12 pr-10 focus:border-blue-500/50 appearance-none cursor-pointer"
                                         onChange={e => setForm({ ...form, role: e.target.value })}
                                         value={form.role}
                                     >
@@ -110,7 +101,7 @@ const Register = () => {
                                         <option value="RECRUITER" className="bg-[#0f172a] text-white">L2_ACCESS: Recruiter_Node</option>
                                         <option value="ADMIN" className="bg-[#0f172a] text-white">L3_ACCESS: Admin_Forensics</option>
                                     </select>
-                                    <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-blue-500/40 group-hover/select:text-blue-500 transition-colors">
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-600 group-hover/select:text-blue-500 transition-colors">
                                         <ChevronRight size={14} className="rotate-90" />
                                     </div>
                                 </div>
@@ -119,42 +110,27 @@ const Register = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full cyber-button bg-blue-600 hover:bg-blue-500 text-white py-4 text-sm font-black italic tracking-widest flex items-center justify-center gap-3 mt-8 shadow-[0_20px_40px_rgba(37,99,235,0.2)] group/btn transition-all duration-500 active:scale-95"
+                                className="w-full cyber-button mt-6 py-4 bg-blue-600 hover:bg-blue-500 text-white shadow-[0_10px_25px_rgba(37,99,235,0.3)] border-transparent"
                             >
                                 {loading ? (
-                                    <Activity className="animate-spin text-white" size={16} />
+                                    <Activity className="animate-spin" size={16} />
                                 ) : (
-                                    <>EXEC_PROVISION_NODE <ArrowRight size={16} className="group-hover/btn:translate-x-1.5 transition-transform" /></>
+                                    <>INITIALIZE_NODE <ArrowRight size={16} /></>
                                 )}
                             </button>
                         </form>
 
-                        <div className="text-center space-y-10 relative z-10 pt-2">
-                            <Link to="/login" className="inline-block text-[10px] text-gray-600 hover:text-white transition-all duration-500 uppercase font-black tracking-[0.4em] font-cyber italic hover:underline underline-offset-8 decoration-blue-500/50">
-                                <span className="text-blue-500 mr-2">&lt;</span> Return_To_Gateway_Portal
+                        <div className="text-center">
+                            <Link to="/login" className="text-[10px] text-slate-500 hover:text-blue-400 transition-colors uppercase font-bold tracking-widest font-cyber italic border-b border-transparent hover:border-blue-500/50 pb-1">
+                                Return_To_Gateway
                             </Link>
-
-                            <div className="flex items-center justify-center gap-8 pt-8 border-t border-white/5 opacity-20">
-                                <div className="flex flex-col items-center gap-2 group/icon transition-opacity hover:opacity-100">
-                                    <Shield size={14} className="text-gray-500" />
-                                    <span className="text-[7px] font-black uppercase tracking-widest">AES_256</span>
-                                </div>
-                                <div className="flex flex-col items-center gap-2 group/icon transition-opacity hover:opacity-100">
-                                    <Database size={14} className="text-gray-500" />
-                                    <span className="text-[7px] font-black uppercase tracking-widest">VAULT_L4</span>
-                                </div>
-                                <div className="flex flex-col items-center gap-2 group/icon transition-opacity hover:opacity-100">
-                                    <Fingerprint size={14} className="text-gray-500" />
-                                    <span className="text-[7px] font-black uppercase tracking-widest">BIO_SYNC</span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="mt-8 flex justify-between items-center px-6 text-gray-800 font-black text-[8px] uppercase tracking-[0.6em] font-cyber italic">
-                    <span>Provisioning_Service_Sovereign</span>
-                    <span>L3_Kernel_Access</span>
+                <div className="mt-8 flex justify-between items-center px-4 text-[10px] uppercase font-bold tracking-[0.4em] text-slate-700 font-cyber italic">
+                    <span>Provisioning_Service</span>
+                    <span>NX_V3.5_CORE</span>
                 </div>
             </div>
         </div>

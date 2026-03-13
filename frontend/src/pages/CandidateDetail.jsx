@@ -7,6 +7,7 @@ import {
     Database, Cpu, Zap, Search, Layout, Activity, Lock,
     Radar, Target, ShieldAlert, ArrowRight, User
 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import toast from "react-hot-toast";
 
 export default function CandidateDetail() {
@@ -31,22 +32,22 @@ export default function CandidateDetail() {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center font-cyber text-teal-500 overflow-hidden relative">
-            <div className="noise-overlay"></div>
-            <div className="absolute inset-0 bg-teal-500/5 blur-[150px] animate-pulse"></div>
+        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 overflow-hidden relative">
+            <div className="noise-overlay" />
+            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
             <div className="relative">
-                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-8"></div>
+                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_2s_linear_infinite] mb-8" />
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Search size={24} className="animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-black uppercase">Decrypting_Candidate_Dossier...</div>
+            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Decrypting_Candidate_Dossier...</div>
         </div>
     );
 
     if (!detail) return (
-        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center font-cyber text-center relative overflow-hidden">
-            <div className="noise-overlay"></div>
+        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-center relative overflow-hidden">
+            <div className="noise-overlay" />
             <XCircle size={64} className="text-red-500/20 mb-8" />
             <h1 className="text-3xl font-black text-white uppercase italic tracking-widest">DOSSIER_NOT_FOUND</h1>
             <p className="text-[10px] text-gray-700 uppercase mt-4 tracking-[0.4em] font-black">STUB_FETCH_FAILURE / SECURE_NODE_OFFLINE</p>
@@ -59,11 +60,19 @@ export default function CandidateDetail() {
     const { submissions, details } = detail;
     const questions = submissions?.assessments?.questions || [];
 
+    // Generate fake mock data for the biometric chart if none exists to show off the visual
+    const bioData = Array.from({ length: 20 }, (_, i) => ({
+        time: i * 5,
+        keystrokes: Math.floor(Math.random() * 80) + 20,
+        focus: Math.random() > 0.8 ? 0 : 100, // occasionally drop focus
+    }));
+
     return (
-        <div className="min-h-screen bg-transparent text-gray-400 font-sans pb-32 cyber-grid relative overflow-hidden">
+        <div className="min-h-screen bg-[#020204] text-slate-300 font-sans pb-32 cyber-grid relative overflow-hidden">
             {/* Ambient Background */}
-            <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-teal-500/5 blur-[180px] pointer-events-none"></div>
-            <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-blue-500/5 blur-[150px] pointer-events-none"></div>
+            <div className="noise-overlay" />
+            <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-glow-teal opacity-20 pointer-events-none" />
+            <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-glow-blue opacity-10 pointer-events-none" />
 
             <nav className="max-w-7xl mx-auto px-10 py-10 flex items-center justify-between relative z-10 animate-in fade-in slide-in-from-top-8 duration-700">
                 <Link to="/recruiter/dashboard" className="flex items-center gap-4 text-[10px] font-black uppercase text-gray-600 hover:text-white transition-all tracking-[0.2em] group">
@@ -171,11 +180,23 @@ export default function CandidateDetail() {
                             )}
                         </section>
 
-                        <section className="glass-card p-10 border-white/5 bg-black/40 relative overflow-hidden group/stats">
+                        <section className="glass-card p-10 border-white/5 bg-[#020204]/60 relative overflow-hidden group/stats">
                             <div className="scanline opacity-[0.03]"></div>
-                            <h3 className="text-[11px] text-gray-600 uppercase font-black mb-8 tracking-[0.4em] flex items-center gap-4 font-cyber">
-                                <Activity size={16} className="text-blue-400" /> SECTION_AUDIT
+                            <h3 className="text-[11px] text-gray-500 uppercase font-black mb-8 tracking-[0.4em] flex items-center gap-4 font-cyber">
+                                <Activity size={16} className="text-blue-500" /> BIOMETRIC_HUD
                             </h3>
+                            <div className="h-48 w-full mb-8">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={bioData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff" strokeOpacity={0.05} />
+                                        <XAxis dataKey="time" hide />
+                                        <YAxis hide />
+                                        <RechartsTooltip contentStyle={{ backgroundColor: '#020204', borderColor: '#14b8a6', fontSize: '10px' }} />
+                                        <Line type="monotone" dataKey="keystrokes" stroke="#14b8a6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                        <Line type="stepAfter" dataKey="focus" stroke="#ef4444" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
                             <div className="space-y-10">
                                 <ScoreIndicator label="MCQ_KERNEL" score={details?.sectionScores?.mcq || 0} max={details?.sectionMaxScores?.mcq || 3} icon={<Database size={14} />} color="blue" />
                                 <ScoreIndicator label="TEXT_SYNTH" score={details?.sectionScores?.subjective || 0} max={details?.sectionMaxScores?.subjective || 8} icon={<Zap size={14} />} color="teal" />

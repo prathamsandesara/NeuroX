@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const authRoutes = require('./routes/authRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
@@ -11,9 +14,11 @@ const candidateRoutes = require('./routes/candidateRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
-const rateLimit = require('express-rate-limit');
 
-// Rate limiting middleware
+// Security Headers (Helmet)
+app.use(helmet());
+
+// General Rate limiting middleware
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 500, // Limit each IP to 500 requests per windowMs
@@ -22,11 +27,21 @@ const limiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Strict Rate limiting for Auth routes
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Increased limit to prevent /auth/me from locking out users
+    message: { error: 'Too many authentication attempts, please try again after 15 minutes' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 app.use('/api/', limiter);
+app.use('/api/auth/', authLimiter);
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (origin, callback) => callback(null, true), // Dynamically allow any origin (e.g. localhost, 192.168.x.x) for LAN dev
     credentials: true
 }));
 

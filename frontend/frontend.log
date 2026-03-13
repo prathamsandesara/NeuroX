@@ -1,11 +1,9 @@
 
 > neurox-frontend@0.0.0 dev
-> vite
+> vite --host
 
 
-  VITE v5.4.21  ready in 379 ms
+  VITE v5.4.21  ready in 287 ms
 
   ➜  Local:   http://localhost:5173/
-  ➜  Network: use --host to expose
-6:52:14 PM [vite] hmr update /src/pages/CandidateAssessment.jsx, /src/index.css
-7:03:37 PM [vite] hmr update /src/pages/CandidateAssessment.jsx, /src/index.css
+  ➜  Network: http://192.168.29.127:5173/

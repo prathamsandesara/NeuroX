@@ -56,24 +56,25 @@ export default function CandidateDashboard() {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center font-cyber text-teal-500 overflow-hidden relative">
-            <div className="noise-overlay"></div>
-            <div className="absolute inset-0 bg-teal-500/5 blur-[150px] animate-pulse"></div>
+        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 overflow-hidden relative">
+            <div className="noise-overlay" />
+            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
             <div className="relative">
-                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-8"></div>
+                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_2s_linear_infinite] mb-8" />
                 <div className="absolute inset-0 flex items-center justify-center">
                     <Target size={24} className="animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-black uppercase">Syncing_Mission_Control...</div>
+            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Syncing_Mission_Control...</div>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-transparent text-gray-400 font-sans pb-32 cyber-grid relative overflow-hidden">
+        <div className="min-h-screen bg-[#020204] text-slate-400 font-sans pb-32 cyber-grid relative overflow-hidden">
             {/* Ambient Background */}
-            <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-teal-500/5 blur-[180px] pointer-events-none"></div>
-            <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-blue-500/5 blur-[150px] pointer-events-none"></div>
+            <div className="noise-overlay" />
+            <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-glow-teal opacity-20 pointer-events-none" />
+            <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-glow-blue opacity-10 pointer-events-none" />
 
             <header className="max-w-7xl mx-auto px-10 pt-10 flex flex-col md:flex-row md:items-end justify-between gap-10 relative z-10 animate-in fade-in slide-in-from-top-12 duration-1000">
                 <div className="space-y-4">
