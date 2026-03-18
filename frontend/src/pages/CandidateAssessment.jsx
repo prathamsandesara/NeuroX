@@ -10,6 +10,7 @@ import {
     AlertTriangle, ShieldAlert, Camera, Mic, Wifi, Server
 } from "lucide-react";
 import { Editor } from "@monaco-editor/react";
+import io from "socket.io-client";
 
 export default function CandidateAssessment() {
     const { assessmentId } = useParams();
@@ -25,6 +26,7 @@ export default function CandidateAssessment() {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [violationType, setViolationType] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [localStreamActive, setLocalStreamActive] = useState(false);
 
     // Behavioral Biometrics State (Using a ref to avoid stale closures in event listeners)
     const metricsRef = useRef({
@@ -40,6 +42,11 @@ export default function CandidateAssessment() {
     const [currentSection, setCurrentSection] = useState("MCQ"); // MCQ, SUBJECTIVE, CODING
     const [timeLeft, setTimeLeft] = useState(0);
     const timerRef = useRef(null);
+
+    // WebRTC State
+    const socketRef = useRef(null);
+    const peerConnectionRef = useRef(null);
+    const localStreamRef = useRef(null);
 
     useEffect(() => {
         initializeSession();
@@ -73,26 +80,134 @@ export default function CandidateAssessment() {
         }
     };
 
+    // Global Listeners (Always active)
     useEffect(() => {
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+        document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+        document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFullscreenChange);
+            document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+            document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+            document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+        };
+    }, []);
+
+    useEffect(() => {
+        let listenersTimeout;
+
         if (examStarted) {
-            window.addEventListener("visibilitychange", handleVisibilityChange);
-            window.addEventListener("blur", handleBlur);
-            window.addEventListener("keydown", handleKeyDown);
-            document.addEventListener("fullscreenchange", handleFullscreenChange);
-            window.addEventListener("copy", blockEvent);
-            window.addEventListener("paste", blockEvent);
-            window.addEventListener("contextmenu", blockEvent);
+            listenersTimeout = setTimeout(() => {
+                window.addEventListener("visibilitychange", handleVisibilityChange);
+                window.addEventListener("blur", handleBlur);
+                window.addEventListener("keydown", handleKeyDown);
+                window.addEventListener("copy", blockEvent);
+                window.addEventListener("paste", blockEvent);
+                window.addEventListener("contextmenu", blockEvent);
+            }, 5000);
+            
+            initWebRTCBroadcaster();
         }
         return () => {
+            clearTimeout(listenersTimeout);
             window.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("blur", handleBlur);
             window.removeEventListener("keydown", handleKeyDown);
-            document.removeEventListener("fullscreenchange", handleFullscreenChange);
             window.removeEventListener("copy", blockEvent);
             window.removeEventListener("paste", blockEvent);
             window.removeEventListener("contextmenu", blockEvent);
         };
     }, [examStarted]);
+
+    // Cleanup tracks only on true unmount
+    useEffect(() => {
+        return () => {
+            if (localStreamRef.current) {
+                console.log("[NeuroX] Cleaning up hardware tracks on unmount");
+                localStreamRef.current.getTracks().forEach(track => track.stop());
+            }
+            if (peerConnectionRef.current) peerConnectionRef.current.close();
+            if (socketRef.current) socketRef.current.disconnect();
+        };
+    }, []);
+
+    const initWebRTCBroadcaster = async () => {
+        const SOCKET_URL = api.defaults.baseURL || window.location.origin;
+        if (!submissionId) {
+            console.warn("[WebRTC] Broadcaster deferred: submissionId is null");
+            return;
+        }
+
+        console.log("[WebRTC] Initializing broadcaster at:", SOCKET_URL);
+        socketRef.current = io(SOCKET_URL);
+        
+        socketRef.current.emit("join-room", submissionId);
+
+        if (!localStreamRef.current) {
+            console.log("[WebRTC] Local stream not found in ref, requesting camera access...");
+            try {
+                localStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            } catch (e) {
+                console.error("Camera access denied, continuing without broadcast.", e);
+                const isSystemDenied = e.name === "NotAllowedError" || e.name === "PermissionDeniedError";
+                toast.error(isSystemDenied 
+                    ? "HARDWARE_ACCESS_DENIED: Please enable camera/mic permissions." 
+                    : "HARDWARE_NOT_FOUND: Ensure camera/mic are connected.");
+                return;
+            }
+        }
+
+        const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+        peerConnectionRef.current = new RTCPeerConnection(configuration);
+
+        console.log("[WebRTC] Adding local tracks to peer connection");
+        localStreamRef.current.getTracks().forEach(track => {
+            peerConnectionRef.current.addTrack(track, localStreamRef.current);
+        });
+        setLocalStreamActive(true);
+
+        peerConnectionRef.current.onicecandidate = event => {
+            if (event.candidate) {
+                socketRef.current.emit("webrtc-ice-candidate", { candidate: event.candidate, roomId: submissionId });
+            }
+        };
+
+        const createAndSendOffer = async () => {
+            if (!peerConnectionRef.current) return;
+            console.log("[WebRTC] Creating and sending offer...");
+            const offer = await peerConnectionRef.current.createOffer();
+            await peerConnectionRef.current.setLocalDescription(offer);
+            socketRef.current.emit("webrtc-offer", { offer, roomId: submissionId });
+        };
+
+        socketRef.current.on("user-connected", () => {
+             console.log("[WebRTC] Remote user joined, initiating offer");
+             createAndSendOffer();
+        });
+        
+        socketRef.current.on("request-negotiation", () => {
+             console.log("[WebRTC] Negotiation requested by remote, initiating offer");
+             createAndSendOffer();
+        });
+
+        socketRef.current.on("webrtc-answer", async (data) => {
+            console.log("[WebRTC] Received answer from remote");
+            if (!peerConnectionRef.current) return;
+            const remoteDesc = new RTCSessionDescription(data.answer);
+            await peerConnectionRef.current.setRemoteDescription(remoteDesc);
+        });
+
+        socketRef.current.on("webrtc-ice-candidate", async (data) => {
+            if (!peerConnectionRef.current) return;
+            try {
+                await peerConnectionRef.current.addIceCandidate(data.candidate);
+            } catch (e) {
+                console.error("Error adding received ice candidate", e);
+            }
+        });
+    };
 
     const handleFullscreenChange = () => {
         const isFull = !!document.fullscreenElement;
@@ -144,9 +259,67 @@ export default function CandidateAssessment() {
         }
     };
 
-    const blockEvent = (e) => {
-        e.preventDefault();
-        return false;
+    // Forensic Snapshot System
+    useEffect(() => {
+        let snapshotInterval;
+        if (examStarted && submissionId) {
+            snapshotInterval = setInterval(takeForensicSnapshot, 60000); // Every 60s
+        }
+        return () => clearInterval(snapshotInterval);
+    }, [examStarted, submissionId]);
+
+    // Answer Auto-Sync
+    useEffect(() => {
+        let syncInterval;
+        if (examStarted && submissionId) {
+            syncInterval = setInterval(syncAnswersToServer, 30000); // Every 30s
+        }
+        return () => clearInterval(syncInterval);
+    }, [examStarted, submissionId, answers]);
+
+    const takeForensicSnapshot = async () => {
+        if (!localStreamRef.current) return;
+        
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        if (!videoTrack) return;
+
+        console.log("[NeuroX] Capturing forensic snapshot...");
+        const canvas = document.createElement("canvas");
+        const video = document.createElement("video");
+        video.srcObject = localStreamRef.current;
+        await video.play();
+
+        canvas.width = 320; // low res for speed
+        canvas.height = 240;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const imageBase64 = canvas.toDataURL("image/jpeg", 0.7);
+        
+        try {
+            await api.post("/api/submissions/upload-snapshot", {
+                submissionId,
+                imageBase64
+            });
+            console.log("[NeuroX] Forensic snapshot uploaded successfully");
+        } catch (error) {
+            console.error("[NeuroX] Snapshot upload failed:", error);
+        } finally {
+            video.srcObject = null;
+        }
+    };
+
+    const syncAnswersToServer = async () => {
+        if (!submissionId) return;
+        try {
+            await api.post("/api/submissions/sync", {
+                submissionId,
+                answers
+            });
+            console.log("[NeuroX] Progress synced to kernel");
+        } catch (error) {
+            console.error("[NeuroX] Progress sync failed:", error);
+        }
     };
 
     const triggerViolation = async (type) => {
@@ -211,18 +384,22 @@ export default function CandidateAssessment() {
     const enterFullscreen = () => {
         const elem = document.documentElement;
         if (elem.requestFullscreen) {
-            elem.requestFullscreen();
+            elem.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            });
         } else if (elem.webkitRequestFullscreen) { /* Safari */
             elem.webkitRequestFullscreen();
         } else if (elem.msRequestFullscreen) { /* IE11 */
             elem.msRequestFullscreen();
         }
-        setIsFullscreen(true);
+        // Notice: we DON'T set setIsFullscreen(true) here anymore.
+        // We let the handleFullscreenChange event listener catch it.
     };
 
     const startExam = () => {
         if (!isFullscreen) return;
         setExamStarted(true);
+        if (localStreamRef.current) setLocalStreamActive(true);
     };
 
     const handleSubmit = async (isAuto = false) => {
@@ -272,12 +449,13 @@ export default function CandidateAssessment() {
                 isFullscreen={isFullscreen}
                 onEnterFullscreen={enterFullscreen}
                 onStart={startExam}
+                localStreamRef={localStreamRef}
             />
         );
     }
 
     const currentQuestions = questions.filter(q => q.type === currentSection);
-
+    
     return (
         <div className="min-h-screen bg-[#020204] text-slate-300 p-6 font-sans select-none pb-32 relative overflow-hidden">
             <ViolationModal
@@ -285,6 +463,15 @@ export default function CandidateAssessment() {
                 type={violationType}
                 onExit={() => navigate("/candidate/dashboard")}
             />
+
+            {/* Local Proctoring Preview */}
+            <div className="fixed bottom-8 right-8 w-48 aspect-video bg-black/80 rounded-2xl border border-teal-500/30 overflow-hidden z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.5)] group/camera">
+                <VideoPreview stream={localStreamRef.current} isActive={localStreamActive} />
+                <div className="absolute top-2 left-2 flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${localStreamActive ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                    <span className="text-[7px] font-black text-white/50 uppercase tracking-widest font-cyber">LIVE_PROCTOR_FEED</span>
+                </div>
+            </div>
 
             {/* Left HUD: System Monitor */}
             <div className="fixed left-8 top-1/2 -translate-y-1/2 w-16 space-y-8 z-50 hidden lg:flex flex-col items-center">
@@ -404,18 +591,50 @@ export default function CandidateAssessment() {
     );
 }
 
-function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart }) {
+function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRef }) {
     const [scanState, setScanState] = useState(0); 
+    const [cameraReady, setCameraReady] = useState(false);
+    const videoRef = useRef(null);
 
     useEffect(() => {
         if (!isFullscreen) return;
         
+        const initCamera = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localStreamRef.current = stream;
+                if (videoRef.current) videoRef.current.srcObject = stream;
+                setCameraReady(true);
+            } catch (err) {
+                console.error("Camera access failed", err);
+                const isSystemDenied = err.name === "NotAllowedError" || err.name === "PermissionDeniedError";
+                toast.error(isSystemDenied 
+                    ? "HARDWARE_ACCESS_DENIED: Please grant permissions." 
+                    : "HARDWARE_SYNC_FAILED: WEBCAM_OFFLINE.");
+            }
+        };
+
+        initCamera();
+
         let timer1 = setTimeout(() => setScanState(1), 1000);
         let timer2 = setTimeout(() => setScanState(2), 2500);
         let timer3 = setTimeout(() => setScanState(3), 4000);
 
-        return () => { clearTimeout(timer1); clearTimeout(timer2); clearTimeout(timer3); };
+        return () => { 
+            clearTimeout(timer1); 
+            clearTimeout(timer2); 
+            clearTimeout(timer3); 
+        };
     }, [isFullscreen]);
+
+    const handleStart = () => {
+        if (cameraReady && scanState === 3) {
+            console.log("[NeuroX] Assessment protocol initiated. Transitioning to secure environment.");
+            onStart();
+        } else if (!cameraReady) {
+            toast.error("HARDWARE_SYNC_FAILED: WEBCAM_OFFLINE");
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#020204] flex items-center justify-center p-12 font-sans overflow-hidden relative">
@@ -461,39 +680,47 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart }) {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
                         <div className="space-y-6">
-                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Terminal size={14}/> SYSTEM_AUDIT_STREAM:</h3>
-                            <div className="p-6 bg-black/80 border border-white/5 rounded-2xl font-mono text-xs leading-loose text-gray-500 h-[280px] overflow-hidden relative shadow-inner">
-                                <div className="absolute top-0 left-0 w-full h-8 bg-gradient-to-b from-black/80 to-transparent z-10 pointer-events-none"></div>
-                                <div className="absolute bottom-0 left-0 w-full h-8 bg-gradient-to-t from-black/80 to-transparent z-10 pointer-events-none"></div>
-                                
-                                <div className="space-y-2 translate-y-2 animate-in slide-in-from-bottom-12 duration-1000">
-                                    <div className="text-teal-500/50">[{new Date().toISOString().split('T')[1].slice(0,-1)}] INITIALIZING_KERNEL...</div>
-                                    <div className="text-white">[{new Date().toISOString().split('T')[1].slice(0,-1)}] FULLSCREEN_LOCK_ACQUIRED</div>
-                                    {scanState >= 1 && <div className="text-teal-400">[{new Date().toISOString().split('T')[1].slice(0,-1)}] BIOMETRIC_SENSORS_ACTIVE</div>}
-                                    {scanState >= 2 && <div className="text-blue-400">[{new Date().toISOString().split('T')[1].slice(0,-1)}] NETWORK_LATENCY_NOMINAL</div>}
-                                    {scanState >= 3 && <div className="text-green-400 font-bold flash">[{new Date().toISOString().split('T')[1].slice(0,-1)}] ALL_SYSTEMS_GO_READY_FOR_EXECUTION</div>}
-                                    {scanState < 3 && <div className="animate-pulse text-yellow-500">_waiting_for_node_response...</div>}
+                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Camera size={14}/> VISUAL_FEED_VERIFICATION:</h3>
+                            <div className="aspect-video bg-black/80 rounded-[2rem] border border-white/5 relative overflow-hidden group shadow-inner">
+                                <VideoPreview stream={localStreamRef.current} isActive={cameraReady} opacity={100} />
+                                {!cameraReady && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                                        <div className="w-12 h-12 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-4" />
+                                        <span className="text-[9px] text-gray-700 uppercase font-black tracking-widest animate-pulse italic">Requesting_Hardware_Access...</span>
+                                    </div>
+                                )}
+                                <div className="absolute top-4 left-4 flex items-center gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${cameraReady ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}></div>
+                                    <span className="text-[8px] font-black text-white/50 uppercase tracking-widest">LIVE_CALIBRATION_FEED</span>
+                                </div>
+                            </div>
+                            
+                            <div className="p-6 bg-black/40 border border-white/5 rounded-2xl font-mono text-xs leading-loose text-gray-500 h-[100px] overflow-hidden relative shadow-inner">
+                                <div className="space-y-1">
+                                    <div className="text-teal-500/50 text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] INITIALIZING_SIGNAL...</div>
+                                    {cameraReady && <div className="text-white text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] WEBCAM_NODE_IDENTIFIED</div>}
+                                    {scanState >= 3 && <div className="text-green-400 font-bold flash text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] ALL_HARDWARE_SYNCHRONIZED</div>}
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-6">
                             <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Server size={14}/> HARDWARE_STATUS:</h3>
-                            <div className="space-y-4">
-                                <HardwareCheck icon={<Camera size={18} />} label="VISUAL_NODE (WEBCAM)" status={scanState >= 1} />
-                                <HardwareCheck icon={<Mic size={18} />} label="AUDIO_NODE (MIC)" status={scanState >= 1} />
-                                <HardwareCheck icon={<Wifi size={18} />} label="CONNECTION_STABILITY" status={scanState >= 2} />
-                                <HardwareCheck icon={<Activity size={18} />} label="ENVIRONMENT_SCAN" status={scanState >= 3} />
+                            <div className="space-y-3">
+                                <HardwareCheck icon={<Camera size={16} />} label="VISUAL_NODE" status={cameraReady} />
+                                <HardwareCheck icon={<Mic size={16} />} label="AUDIO_NODE" status={cameraReady} />
+                                <HardwareCheck icon={<Wifi size={16} />} label="CONNECTION" status={scanState >= 2} />
+                                <HardwareCheck icon={<Activity size={16} />} label="INTEGRITY_SCAN" status={scanState >= 3} />
                             </div>
 
                             <button
-                                onClick={onStart}
-                                disabled={scanState < 3}
+                                onClick={handleStart}
+                                disabled={scanState < 3 || !cameraReady}
                                 className={`w-full py-5 text-xs font-black italic tracking-widest flex items-center justify-center gap-4 transition-all duration-700 rounded-2xl
-                                    ${scanState === 3 ? 'cyber-button bg-white text-black hover:bg-teal-400 animate-glow shadow-[0_0_30px_rgba(255,255,255,0.3)]' : 'bg-white/5 text-gray-600 border border-white/10 cursor-not-allowed'}
+                                    ${(scanState === 3 && cameraReady) ? 'cyber-button bg-white text-black hover:bg-teal-400 animate-glow shadow-[0_0_30px_rgba(255,255,255,0.3)]' : 'bg-white/5 text-gray-600 border border-white/10 cursor-not-allowed'}
                                 `}
                             >
-                                <Play size={18} className={scanState === 3 ? "scale-110" : ""} /> INITIALIZE_NEURAL_LINK
+                                <Play size={18} className={(scanState === 3 && cameraReady) ? "scale-110" : ""} /> INITIALIZE_NEURAL_LINK
                             </button>
                         </div>
                     </div>
@@ -528,10 +755,10 @@ function QuestionBox({ idx, question, value, onChange, api }) {
 
     useEffect(() => {
         if (question.type === "CODING" && (!value || (typeof value === 'object' && !value.code))) {
-            const boilerplate = question.content.starter_code?.[selectedLang] || '';
+            const boilerplate = question.content?.starter_code?.[selectedLang] || '';
             onChange(boilerplate, selectedLang);
         }
-    }, [question.id]);
+    }, [question.id, selectedLang]);
 
     const handleRun = async () => {
         setRunning(true);
@@ -539,7 +766,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
             const { data } = await api.post("/api/assessments/submit-code", {
                 source_code: value?.code || value,
                 language_id: selectedLang,
-                test_cases: question.content.test_cases
+                test_cases: question.content?.test_cases || []
             });
             setResults(data.results);
         } catch (err) {
@@ -569,7 +796,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                             <ArrowRight size={20} className="text-teal-500" /> PROBLEM_SPEC:
                         </h2>
                         <div className="text-sm text-gray-400 leading-relaxed font-sans space-y-4">
-                            {question.content.problem_statement.split('\n').map((line, i) => (
+                            {(question.content?.problem_statement || "No problem statement provided.").split('\n').map((line, i) => (
                                 <p key={i}>{line}</p>
                             ))}
                         </div>
@@ -580,7 +807,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                             <Info size={14} /> DATA_CONSTRAINTS:
                         </label>
                         <div className="p-6 bg-black/80 border border-white/5 rounded-2xl text-[10px] font-mono text-gray-500 leading-loose shadow-inner italic">
-                            {question.content.constraints || "Memory_Limit: 512MB\nTime_Limit: 2.0s\nStandard_I/O_Required\nEdge_Case_Stability: HIGH"}
+                            {question.content?.constraints || "Memory_Limit: 512MB\nTime_Limit: 2.0s\nStandard_I/O_Required\nEdge_Case_Stability: HIGH"}
                         </div>
                     </div>
                 </div>
@@ -595,7 +822,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                                     value={selectedLang}
                                     onChange={(e) => {
                                         setSelectedLang(e.target.value);
-                                        const boilerplate = question.content.starter_code?.[e.target.value] || '';
+                                        const boilerplate = question.content?.starter_code?.[e.target.value] || '';
                                         onChange(boilerplate, e.target.value);
                                     }}
                                     className="bg-transparent text-[10px] font-black text-white uppercase tracking-widest outline-none cursor-pointer"
@@ -621,7 +848,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                             height="100%"
                             theme="vs-dark"
                             language={selectedLang === 'cpp' ? 'cpp' : selectedLang}
-                            value={value?.code || value || ''}
+                            value={typeof value === 'string' ? value : (value?.code || '')}
                             onChange={(newValue) => onChange(newValue, selectedLang)}
                             options={{
                                 minimap: { enabled: false },
@@ -688,7 +915,9 @@ function QuestionBox({ idx, question, value, onChange, api }) {
 
             <div className="space-y-12">
                 <div className="space-y-6">
-                    <p className="text-xl font-black text-white leading-tight tracking-tight uppercase italic font-cyber underline decoration-teal-500/20 underline-offset-4 decoration-2">{question.content.question}</p>
+                    <p className="text-xl font-black text-white leading-tight tracking-tight uppercase italic font-cyber underline decoration-teal-500/20 underline-offset-4 decoration-2">
+                        {question.content?.question || "No question text available."}
+                    </p>
                     <div className="flex gap-1.5 pt-2">
                         {[1, 2, 3, 4, 5].map(i => (
                             <div key={i} className={`w-8 h-1 rounded-full ${i <= 3 ? 'bg-teal-500/30' : 'bg-white/5'}`}></div>
@@ -698,7 +927,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
 
                 {question.type === "MCQ" ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {question.content.options.map((opt, i) => {
+                        {(question.content?.options || []).map((opt, i) => {
                             const label = String.fromCharCode(65 + i);
                             const isSelected = (value?.code || value) === label;
                             return (
@@ -740,5 +969,32 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                 )}
             </div>
         </section>
+    );
+}
+
+function VideoPreview({ stream, isActive, opacity = 60 }) {
+    const videoRef = useRef(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(e => {
+                if (e.name !== 'AbortError') {
+                    console.error("[WebRTC] Video play error:", e);
+                }
+            });
+        }
+        return () => { isMounted = false; };
+    }, [stream]);
+
+    return (
+        <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className={`w-full h-full object-cover transition-opacity duration-1000 ${stream ? (isActive ? `opacity-${opacity}` : 'opacity-40') : 'opacity-0'} group-hover/camera:opacity-100`}
+        />
     );
 }

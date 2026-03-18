@@ -7,7 +7,7 @@ import {
     Shield, Activity, Database, Lock, AlertOctagon,
     Terminal, Fingerprint, Search, RefreshCw, FileText,
     Globe, Cpu, Zap, Radar, HardDrive, Server, ArrowRight,
-    Clock, Eye, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Monitor
+    Clock, Eye, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Monitor, Wifi
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -132,7 +132,13 @@ export default function AdminDashboard() {
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-glow"></div>
                             </div>
                             <h1 className="text-2xl font-black text-white italic tracking-tighter font-cyber uppercase leading-none">FORENSIC_COMMAND</h1>
-                            <p className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.5em] mt-1.5">Threat_Intelligence_v5.0 // Anomaly_Detection_Active</p>
+                            <div className="flex items-center gap-3 mt-1.5">
+                                <p className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.5em]">Threat_Intelligence_v5.0</p>
+                                <div className="h-2 w-[1px] bg-white/10 mx-1"></div>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-teal-500/5 border border-teal-500/10 rounded-md text-[7px] font-black text-teal-400 uppercase tracking-widest">
+                                    <Wifi size={8} /> {window.location.hostname}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">

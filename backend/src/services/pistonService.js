@@ -3,15 +3,15 @@ const axios = require('axios');
 const PISTON_API_URL = process.env.PISTON_API_URL || 'https://emkc.org/api/v2/piston/execute';
 
 const languageMap = {
-    'cpp': { language: 'cpp', version: '*' },
-    'python': { language: 'python', version: '*' },
-    'javascript': { language: 'javascript', version: '*' },
-    'java': { language: 'java', version: '*' },
-    'c': { language: 'c', version: '*' },
+    'cpp': { language: 'c++', version: '10.2.0' },
+    'python': { language: 'python', version: '3.10.0' },
+    'javascript': { language: 'javascript', version: '18.15.0' },
+    'java': { language: 'java', version: '15.0.2' },
+    'c': { language: 'c', version: '10.2.0' },
     // Fallback or additional mappings
-    'node': { language: 'javascript', version: '*' },
-    'js': { language: 'javascript', version: '*' },
-    'py': { language: 'python', version: '*' }
+    'node': { language: 'javascript', version: '18.15.0' },
+    'js': { language: 'javascript', version: '18.15.0' },
+    'py': { language: 'python', version: '3.10.0' }
 };
 
 const executeCode = async (language, sourceCode, stdin = '') => {

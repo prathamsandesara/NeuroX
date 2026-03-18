@@ -5,7 +5,7 @@ PROJECT_ROOT=$(pwd)
 
 echo "🕵️ Cleaning up existing processes on ports 5005, 5001, 5173, 4000..."
 # List of ports to clean
-PORTS=(5005 5001 5173 4000)
+PORTS=(5005 5001 5173 5174 4000)
 
 for PORT in "${PORTS[@]}"; do
     PID=$(lsof -ti:$PORT)

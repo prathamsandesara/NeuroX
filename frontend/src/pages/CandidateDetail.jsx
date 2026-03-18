@@ -1,23 +1,101 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "../api/axiosInstance";
 import {
     AlertTriangle, CheckCircle, XCircle, Clock, FileText,
     Code, ChevronLeft, Shield, Fingerprint, Terminal,
     Database, Cpu, Zap, Search, Layout, Activity, Lock,
-    Radar, Target, ShieldAlert, ArrowRight, User
+    Radar, Target, ShieldAlert, ArrowRight, User, Download,
+    Camera, Wifi
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import toast from "react-hot-toast";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import io from "socket.io-client";
 
 export default function CandidateDetail() {
     const { submissionId } = useParams();
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isExporting, setIsExporting] = useState(false);
+    const dossierRef = useRef(null);
+
+    // WebRTC Receiver State
+    const videoRef = useRef(null);
+    const remoteStreamRef = useRef(null);
+    const socketRef = useRef(null);
+    const peerConnectionRef = useRef(null);
+    const [streamActive, setStreamActive] = useState(false);
 
     useEffect(() => {
         fetchDetail();
+        initWebRTCReceiver();
+
+        const pollInterval = setInterval(fetchDetail, 30000); // Poll every 30s for snapshots/progress
+
+        return () => {
+            clearInterval(pollInterval);
+            if (peerConnectionRef.current) peerConnectionRef.current.close();
+            if (socketRef.current) socketRef.current.disconnect();
+        };
     }, [submissionId]);
+
+    const initWebRTCReceiver = () => {
+        // Use window.location.origin to connect to the server regardless of current host (localhost vs IP)
+        const SOCKET_URL = api.defaults.baseURL || window.location.origin;
+        console.log("[WebRTC] Connecting to signaling server:", SOCKET_URL);
+        socketRef.current = io(SOCKET_URL);
+
+        const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+        peerConnectionRef.current = new RTCPeerConnection(configuration);
+
+        peerConnectionRef.current.ontrack = event => {
+            console.log("[WebRTC] Received remote track:", event.streams[0]);
+            remoteStreamRef.current = event.streams[0];
+            if (videoRef.current) {
+                videoRef.current.srcObject = event.streams[0];
+            }
+            setStreamActive(true);
+        };
+
+        peerConnectionRef.current.onicecandidate = event => {
+            if (event.candidate) {
+                socketRef.current.emit("webrtc-ice-candidate", { candidate: event.candidate, roomId: submissionId });
+            }
+        };
+
+        socketRef.current.on("webrtc-offer", async (data) => {
+            console.log("[WebRTC] Received offer from candidate");
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnectionRef.current.createAnswer();
+            await peerConnectionRef.current.setLocalDescription(answer);
+            socketRef.current.emit("webrtc-answer", { answer, roomId: submissionId });
+        });
+
+        socketRef.current.on("webrtc-ice-candidate", async (data) => {
+            if (!peerConnectionRef.current) return;
+            try {
+                await peerConnectionRef.current.addIceCandidate(data.candidate);
+            } catch (e) {
+                console.error("Error adding received ice candidate", e);
+            }
+        });
+        
+        socketRef.current.on("user-connected", () => {
+             console.log("[WebRTC] Candidate connected to room");
+             socketRef.current.emit("request-negotiation", { roomId: submissionId });
+        });
+
+        socketRef.current.on("user-disconnected", () => {
+             console.log("[WebRTC] Candidate disconnected");
+             setStreamActive(false);
+        });
+
+        socketRef.current.emit("join-room", submissionId);
+        // Proactively ask for an offer as soon as we connect
+        socketRef.current.emit("request-negotiation", { roomId: submissionId });
+    };
 
     const fetchDetail = async () => {
         try {
@@ -28,6 +106,36 @@ export default function CandidateDetail() {
             toast.error("DATA_RETRIEVAL_ERROR: SECURE_CHANNEL_FAILURE");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDownloadDossier = async () => {
+        if (!dossierRef.current) return;
+        setIsExporting(true);
+        const loadingToast = toast.loading("ENCRYPTING_DOSSIER_TO_PDF...");
+        try {
+            const canvas = await html2canvas(dossierRef.current, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#020204',
+            });
+            const imgData = canvas.toDataURL("image/png");
+            const pdf = new jsPDF("p", "mm", "a4");
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            // If the content is longer than one page, we just scale it to fit one very long page, 
+            // or let it spill over. For a clean dossier, we will capture it as a long scroll 
+            // and let jsPDF handle it or we constrain to width.
+            
+            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, Math.min(pdfHeight, pdf.internal.pageSize.getHeight() * 3));
+            pdf.save(`NeuroX_Forensic_Dossier_${submissions?.users?.email?.split('@')[0] || 'Unknown'}.pdf`);
+            toast.success("DOSSIER_EXPORTED_SECURELY", { id: loadingToast });
+        } catch (error) {
+            console.error("PDF Export failed:", error);
+            toast.error("EXPORT_FAILURE: SECURE_NODE_ERROR", { id: loadingToast });
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -82,6 +190,14 @@ export default function CandidateDetail() {
                     RETURN_TO_COMMAND
                 </Link>
                 <div className="flex items-center gap-6">
+                    <button 
+                        onClick={handleDownloadDossier}
+                        disabled={isExporting}
+                        className="cyber-button bg-teal-500/10 border border-teal-500/20 hover:border-teal-500/50 text-teal-400 px-6 py-2 flex items-center gap-3 transition-all duration-700 disabled:opacity-50"
+                    >
+                        <Download size={14} className={isExporting ? "animate-bounce" : ""} /> 
+                        {isExporting ? "ENCRYPTING..." : "DOWNLOAD_DOSSIER"}
+                    </button>
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] font-black text-teal-500 uppercase tracking-widest leading-none mb-1">AUDIT_SESSION: ACTIVE</span>
                         <span className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.3em]">ENCRYPTION_L4_VERIFIED</span>
@@ -92,12 +208,16 @@ export default function CandidateDetail() {
                 </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto px-10 pt-16 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
+            <main ref={dossierRef} className="max-w-7xl mx-auto px-10 pt-16 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
                 <header className="mb-24 flex flex-col lg:flex-row lg:items-end justify-between gap-16 border-b border-white/5 pb-20 group">
                     <div className="space-y-10">
                         <div className="flex items-center gap-6">
-                            <div className="w-20 h-20 bg-teal-500 flex items-center justify-center rounded-[2.5rem] shadow-[0_0_40px_rgba(20,184,166,0.5)] transition-transform duration-700 group-hover:scale-110">
-                                <User size={40} className="text-black" />
+                            <div className="w-20 h-20 bg-teal-500 flex items-center justify-center rounded-[2.5rem] shadow-[0_0_40px_rgba(20,184,166,0.5)] transition-transform duration-700 group-hover:scale-110 overflow-hidden border-2 border-teal-400/30">
+                                {submissions?.details?.last_snapshot_url ? (
+                                    <img src={submissions.details.last_snapshot_url} alt="Forensic" className="w-full h-full object-cover" />
+                                ) : (
+                                    <User size={40} className="text-black" />
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-teal-500/5 border border-teal-500/10 rounded-full">
@@ -149,6 +269,48 @@ export default function CandidateDetail() {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
                     {/* Left HUD Column */}
                     <div className="lg:col-span-1 space-y-12">
+                        
+                        {/* WebRTC Live Stream */}
+                        <section className="glass-card p-6 border-white/5 bg-black/40 relative overflow-hidden group/stream">
+                            <div className="scanline opacity-[0.03]"></div>
+                            <h3 className="text-[11px] text-gray-600 uppercase font-black mb-4 tracking-[0.4em] flex items-center justify-between font-cyber">
+                                <div className="flex items-center gap-4">
+                                    <Camera size={16} className="text-teal-500" /> LIVE_STREAM
+                                </div>
+                                {streamActive ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                                        <span className="text-[9px] text-red-500 tracking-widest uppercase">REC</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-[9px] text-gray-700 tracking-widest uppercase">OFFLINE</span>
+                                )}
+                            </h3>
+                            <div className="w-full aspect-video bg-[#020204] rounded-xl border border-white/5 relative overflow-hidden flex items-center justify-center">
+                                <video 
+                                    ref={el => {
+                                        videoRef.current = el;
+                                        if (el && remoteStreamRef.current) {
+                                            el.srcObject = remoteStreamRef.current;
+                                            el.play().catch(e => console.error("[WebRTC] Remote video play error:", e));
+                                        }
+                                    }}
+                                    autoPlay 
+                                    playsInline 
+                                    muted
+                                    className={`w-full h-full object-cover transition-opacity duration-1000 ${streamActive ? 'opacity-100' : 'opacity-0'}`} 
+                                />
+                                {!streamActive && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+                                        <div className="w-10 h-10 border border-teal-500/20 rounded-full flex items-center justify-center mb-2">
+                                            <Wifi size={16} className="text-teal-500/30" />
+                                        </div>
+                                        <span className="text-[9px] text-teal-500/50 uppercase tracking-[0.3em] font-black">AWAITING_UPLINK</span>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
                         <section className="glass-card p-10 border-white/5 bg-black/40 group/audit relative overflow-hidden">
                             <div className="scanline opacity-[0.03]"></div>
                             <h3 className="text-[11px] text-gray-600 uppercase font-black mb-8 tracking-[0.4em] flex items-center gap-4 font-cyber">

@@ -106,11 +106,17 @@ export default function CandidateDashboard() {
                         </div>
                     </div>
 
-                    <label className="block w-full cursor-pointer relative z-10">
-                        <input type="file" className="hidden" onChange={handleResumeUpload} accept=".pdf" />
-                        <div className="cyber-button bg-white/5 border border-white/10 hover:border-teal-500/50 text-white flex items-center justify-center gap-3 w-full py-3 group/btn transition-all duration-700">
-                            {uploading ? <RefreshCw className="animate-spin text-teal-500" size={14} /> : <Upload size={14} className="group-hover/btn:scale-125 transition-transform" />}
-                            <span className="text-[10px] uppercase font-black tracking-[0.2em] italic font-cyber">{resumeUrl ? 'UPDATE_REPOSITORY' : 'INITIALIZE_UPLOAD'}</span>
+                    <label className={`block w-full ${resumeUrl || uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} relative z-10`}>
+                        <input 
+                            type="file" 
+                            className="hidden" 
+                            onChange={handleResumeUpload} 
+                            accept=".pdf" 
+                            disabled={!!resumeUrl || uploading}
+                        />
+                        <div className={`cyber-button bg-white/5 border border-white/10 text-white flex items-center justify-center gap-3 w-full py-3 group/btn transition-all duration-700 pointer-events-auto ${resumeUrl || uploading ? 'cursor-not-allowed opacity-50' : 'hover:border-teal-500/50'}`}>
+                            {uploading ? <RefreshCw className="animate-spin text-teal-500" size={14} /> : <Upload size={14} className={`${!(resumeUrl || uploading) && 'group-hover/btn:scale-125'} transition-transform`} />}
+                            <span className="text-[10px] uppercase font-black tracking-[0.2em] italic font-cyber">{resumeUrl ? 'RESUME_ALREADY_UPLOADED' : 'INITIALIZE_UPLOAD'}</span>
                         </div>
                     </label>
                 </div>

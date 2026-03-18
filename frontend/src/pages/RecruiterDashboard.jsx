@@ -6,8 +6,9 @@ import {
     Briefcase, Users, ShieldAlert, BarChart3, Plus,
     Search, Filter, ExternalLink, Zap, Lock, Unlock,
     MoreVertical, Download, Eye, Terminal, Cpu, Shield,
-    Activity, TrendingUp, Target, Database, Github, ArrowRight
-} from 'lucide-react';
+    Activity, TrendingUp, Target, Database, Github, ArrowRight,
+    Clock, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Monitor, Wifi
+} from "lucide-react";
 import ManualQuestionModal from '../components/ManualQuestionModal';
 import HRCharts from '../components/HRCharts';
 
@@ -116,7 +117,13 @@ const RecruiterDashboard = () => {
                         </div>
                         <div>
                             <h1 className="text-lg font-black text-white italic tracking-tighter font-cyber uppercase leading-none mb-0.5">COMMAND_CENTER</h1>
-                            <p className="text-[8px] text-gray-600 font-bold uppercase tracking-[0.4em]">Sub_System_Active / Node: {activeTab}</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-[8px] text-gray-600 font-bold uppercase tracking-[0.4em]">Sub_System_Active / Node: {activeTab}</p>
+                                <div className="h-2 w-[1px] bg-white/10 mx-1"></div>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/5 border border-blue-500/10 rounded-md text-[7px] font-black text-blue-400 uppercase tracking-widest">
+                                    <Wifi size={8} /> {window.location.hostname}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -188,7 +195,14 @@ const RecruiterDashboard = () => {
                                 </div>
                                 <div className="h-72 flex items-center justify-center bg-black/40 rounded-[1.5rem] border border-white/5 relative overflow-hidden group">
                                     <div className="scanline opacity-10"></div>
-                                    <HRCharts />
+                                    {stats?.scoreDistribution ? (
+                                        <HRCharts data={stats.scoreDistribution} />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-4">
+                                            <div className="w-8 h-8 border-2 border-teal-500/20 border-t-teal-500 rounded-full animate-spin"></div>
+                                            <span className="text-[10px] font-black text-gray-700 uppercase tracking-widest animate-pulse">PULLING_SCORE_CURVE...</span>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="mt-8 grid grid-cols-2 gap-4">
                                     <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
@@ -253,7 +267,9 @@ const RecruiterDashboard = () => {
                                         </div>
                                         <div className="flex flex-wrap gap-1.5 mt-3">
                                             {job.skills?.slice(0, 3).map((skill, i) => (
-                                                <span key={i} className="px-2 py-0.5 bg-white/[0.02] border border-white/5 rounded-lg text-[8px] font-black text-gray-500 uppercase">{skill}</span>
+                                                <span key={i} className="px-2 py-0.5 bg-white/[0.02] border border-white/5 rounded-lg text-[8px] font-black text-gray-500 uppercase">
+                                                    {typeof skill === 'object' ? skill.skill_name : skill}
+                                                </span>
                                             ))}
                                             {job.skills?.length > 3 && <span className="px-2 py-0.5 text-[8px] font-black text-gray-600">+{job.skills.length - 3} MORE</span>}
                                         </div>

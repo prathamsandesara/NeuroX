@@ -10,6 +10,9 @@ router.use(authMiddleware);
 
 router.post('/', roleMiddleware('CANDIDATE'), submissionController.submitAssessment);
 router.post('/start', roleMiddleware('CANDIDATE'), submissionController.startAssessment);
+router.post('/sync', roleMiddleware('CANDIDATE'), submissionController.syncAnswers);
+router.post('/snapshot', roleMiddleware('CANDIDATE'), submissionController.syncSnapshot);
+router.post('/upload-snapshot', roleMiddleware('CANDIDATE'), submissionController.uploadSnapshot);
 router.post('/violation', roleMiddleware('CANDIDATE'), submissionController.logAssessmentViolation);
 router.get('/:submissionId', submissionController.getResult);
 

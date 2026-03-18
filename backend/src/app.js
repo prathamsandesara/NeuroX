@@ -15,6 +15,9 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
+// Enable trust proxy for correct IP capture (especially in deployment)
+app.set('trust proxy', true);
+
 // Security Headers (Helmet)
 app.use(helmet());
 

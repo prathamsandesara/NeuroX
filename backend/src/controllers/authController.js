@@ -31,7 +31,7 @@ const register = async (req, res) => {
 
         // Capture Fingerprinting Data
         const security_metadata = {
-            ip_address: req.ip || req.headers['x-forwarded-for'] || '127.0.0.1',
+            ip_address: req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'UNKNOWN',
             user_agent: req.headers['user-agent'] || 'UNKNOWN_CLIENT',
             registered_at: new Date().toISOString()
         };
@@ -157,7 +157,7 @@ const login = async (req, res) => {
 
         // --- SUCCESSFUL LOGIN: Capture full security fingerprint ---
         const loginEvent = {
-            ip: req.ip || req.headers['x-forwarded-for'] || '127.0.0.1',
+            ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'UNKNOWN',
             user_agent: req.headers['user-agent'] || 'UNKNOWN_CLIENT',
             timestamp: new Date().toISOString(),
             device_fingerprint: deviceFingerprint || null,

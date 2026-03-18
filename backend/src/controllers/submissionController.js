@@ -327,4 +327,119 @@ const logAssessmentViolation = async (req, res) => {
     }
 };
 
-module.exports = { startAssessment, submitAssessment, getResult, logAssessmentViolation, evaluateSubmission };
+const syncSnapshot = async (req, res) => {
+    try {
+        const { submissionId, snapshotUrl } = req.body;
+        const { data, error } = await supabase
+            .from('submissions')
+            .select('details')
+            .eq('id', submissionId)
+            .single();
+
+        if (error) throw error;
+
+        const updatedDetails = {
+            ...(data.details || {}),
+            last_snapshot_url: snapshotUrl
+        };
+
+        const { error: updateErr } = await supabase
+            .from('submissions')
+            .update({ details: updatedDetails })
+            .eq('id', submissionId);
+
+        if (updateErr) throw updateErr;
+        res.json({ message: 'Snapshot synced' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const syncAnswers = async (req, res) => {
+    try {
+        const { submissionId, answers } = req.body;
+        const { data, error } = await supabase
+            .from('submissions')
+            .select('details')
+            .eq('id', submissionId)
+            .single();
+
+        if (error) throw error;
+
+        const updatedDetails = {
+            ...(data.details || {}),
+            rawAnswers: {
+                ...(data.details?.rawAnswers || {}),
+                ...answers
+            }
+        };
+
+        const { error: updateErr } = await supabase
+            .from('submissions')
+            .update({ details: updatedDetails })
+            .eq('id', submissionId);
+
+        if (updateErr) throw updateErr;
+        res.json({ message: 'Answers synced' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const uploadSnapshot = async (req, res) => {
+    try {
+        const { submissionId, imageBase64 } = req.body;
+        
+        // Convert base64 to Buffer
+        const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+        const fileName = `${submissionId}/${Date.now()}.jpg`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('snapshots')
+            .upload(fileName, buffer, {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('snapshots')
+            .getPublicUrl(fileName);
+
+        // Update the submission with the last snapshot URL
+        const { data: subData, error: subFetchErr } = await supabase
+            .from('submissions')
+            .select('details')
+            .eq('id', submissionId)
+            .single();
+
+        if (subFetchErr) throw subFetchErr;
+
+        const updatedDetails = {
+            ...(subData.details || {}),
+            last_snapshot_url: publicUrl
+        };
+
+        await supabase
+            .from('submissions')
+            .update({ details: updatedDetails })
+            .eq('id', submissionId);
+
+        res.json({ message: 'Snapshot uploaded', publicUrl });
+    } catch (error) {
+        console.error("Snapshot upload error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+module.exports = { 
+    startAssessment, 
+    submitAssessment, 
+    getResult, 
+    logAssessmentViolation, 
+    evaluateSubmission,
+    syncSnapshot,
+    syncAnswers,
+    uploadSnapshot
+};
