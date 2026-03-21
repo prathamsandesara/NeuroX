@@ -7,7 +7,7 @@ import {
     Shield, Activity, Database, Lock, AlertOctagon,
     Terminal, Fingerprint, Search, RefreshCw, FileText,
     Globe, Cpu, Zap, Radar, HardDrive, Server, ArrowRight,
-    Clock, Eye, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Monitor, Wifi
+    Clock, Eye, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Monitor, Wifi, Trash2
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -47,6 +47,19 @@ export default function AdminDashboard() {
             setForensicLogs([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteAssessment = async (assessmentId) => {
+        if (!window.confirm("CRITICAL_SECURITY_ACTION: This will purge ALL associated forensic data (Submissions, Biometrics, Violations). Proceed?")) return;
+
+        try {
+            await api.delete(`/api/admin/assessment/${assessmentId}`);
+            toast.success('DATA_PURGE_COMPLETE');
+            fetchAdminPortalData();
+        } catch (error) {
+            console.error("Purge error:", error);
+            toast.error('PURGE_FAILED: INSUFFICIENT_PRIVILEGES');
         }
     };
 
@@ -101,7 +114,7 @@ export default function AdminDashboard() {
     const totalViolations = forensicLogs.reduce((acc, f) => acc + (f.violationsCount || 0), 0);
 
     if (loading) return (
-        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 relative overflow-hidden">
+        <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center font-cyber text-teal-400 relative overflow-hidden transition-colors duration-300">
             <div className="noise-overlay" />
             <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
             <div className="relative">
@@ -110,17 +123,17 @@ export default function AdminDashboard() {
                     <Shield size={24} className="animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Initializing_Forensic_Kernel...</div>
+            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-[var(--text-secondary)]">Initializing_Forensic_Kernel...</div>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-[#020204] text-slate-400 font-sans selection:bg-teal-500/30 relative overflow-hidden">
+        <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-secondary)] font-sans selection:bg-teal-500/30 relative overflow-hidden transition-colors duration-300">
             <div className="noise-overlay" />
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-glow-teal opacity-20 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-glow-teal opacity-10 dark:opacity-20 pointer-events-none" />
 
             {/* Header */}
-            <header className="sticky top-0 z-[100] border-b border-white/5 bg-black/60 backdrop-blur-3xl px-12 py-5">
+            <header className="border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] backdrop-blur-3xl px-12 py-8 transition-colors duration-300">
                 <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8">
                     <div className="flex items-center gap-5">
                         <div className="w-12 h-12 bg-teal-500 flex items-center justify-center rounded-2xl shadow-[0_0_20px_rgba(20,184,166,0.4)]">
@@ -128,14 +141,14 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                             <div className="flex items-center gap-3 mb-0.5">
-                                <span className="px-3 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-400 font-black text-[8px] rounded uppercase tracking-[0.2em]">SEC_ADMIN_L4</span>
+                                <span className="px-3 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400 font-black text-[8px] rounded uppercase tracking-[0.2em]">SEC_ADMIN_L4</span>
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-glow"></div>
                             </div>
-                            <h1 className="text-2xl font-black text-white italic tracking-tighter font-cyber uppercase leading-none">FORENSIC_COMMAND</h1>
+                            <h1 className="text-2xl font-black text-[var(--text-primary)] italic tracking-tighter font-cyber uppercase leading-none">FORENSIC_COMMAND</h1>
                             <div className="flex items-center gap-3 mt-1.5">
-                                <p className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.5em]">Threat_Intelligence_v5.0</p>
-                                <div className="h-2 w-[1px] bg-white/10 mx-1"></div>
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-teal-500/5 border border-teal-500/10 rounded-md text-[7px] font-black text-teal-400 uppercase tracking-widest">
+                                <p className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-[0.5em] opacity-50">Threat_Intelligence_v5.0</p>
+                                <div className="h-2 w-[1px] bg-[var(--border-primary)] mx-1"></div>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-teal-500/5 border border-teal-500/10 rounded-md text-[7px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-widest">
                                     <Wifi size={8} /> {window.location.hostname}
                                 </div>
                             </div>
@@ -147,10 +160,10 @@ export default function AdminDashboard() {
                             <StatPill label="ANOMALIES" value={anomalyCount} color="text-yellow-500" bg="bg-yellow-500/10 border-yellow-500/20" />
                             <StatPill label="VIOLATIONS" value={totalViolations} color="text-orange-500" bg="bg-orange-500/10 border-orange-500/20" />
                         </div>
-                        <button onClick={handleExportPDF} className="cyber-button cyber-button-primary px-6 py-3 text-[10px]">
+                        <button onClick={handleExportPDF} className="cyber-button cyber-button-primary px-6 py-3 text-[10px] bg-teal-500 text-white dark:text-black">
                             <FileText size={13} /> EXPORT_AUDIT
                         </button>
-                        <button onClick={fetchAdminPortalData} className="p-3 bg-white/5 border border-white/10 text-teal-500 rounded-xl hover:bg-teal-500 hover:text-black transition-all">
+                        <button onClick={fetchAdminPortalData} className="p-3 bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-teal-500 rounded-xl hover:bg-teal-500 hover:text-white dark:hover:text-black transition-all shadow-sm">
                             <RefreshCw size={16} />
                         </button>
                     </div>
@@ -172,19 +185,19 @@ export default function AdminDashboard() {
                         {/* Security Terminal */}
                         <section className="glass-card p-8 border-teal-500/10 bg-gradient-to-b from-teal-500/5 to-transparent relative group min-h-[300px]">
                             <div className="scanline opacity-5"></div>
-                            <h3 className="text-xs font-black text-white uppercase mb-6 flex items-center gap-4 tracking-[0.3em] font-cyber">
-                                <Terminal size={18} className="text-teal-500" /> EVENT_STREAM
+                            <h3 className="text-xs font-black text-[var(--text-primary)] uppercase mb-6 flex items-center gap-4 tracking-[0.3em] font-cyber">
+                                <Terminal size={18} className="text-teal-600 dark:text-teal-500" /> EVENT_STREAM
                             </h3>
                             <SecurityTerminal />
                         </section>
 
                         {/* Live Threat Map */}
-                        <section className="glass-card p-8 border-white/5 bg-[#020204]/80 relative overflow-hidden group min-h-[300px]">
+                        <section className="glass-card p-8 relative overflow-hidden group min-h-[300px]">
                             <div className="scanline opacity-[0.03]"></div>
-                            <h3 className="text-xs font-black text-white uppercase mb-6 flex items-center gap-4 tracking-[0.3em] font-cyber">
+                            <h3 className="text-xs font-black text-[var(--text-primary)] uppercase mb-6 flex items-center gap-4 tracking-[0.3em] font-cyber">
                                 <Globe size={18} className="text-blue-500" /> LIVE_THREAT_MAP
                             </h3>
-                            <div className="relative w-full h-48 border border-white/10 rounded-2xl bg-black/40 overflow-hidden flex items-center justify-center">
+                            <div className="relative w-full h-48 border border-[var(--border-primary)] rounded-2xl bg-[var(--bg-secondary)] overflow-hidden flex items-center justify-center shadow-inner">
                                 {/* Grid map background */}
                                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHJlY3Qgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIvPjwvc3ZnPg==')] opacity-50"></div>
                                 {/* Scanning line */}
@@ -210,21 +223,21 @@ export default function AdminDashboard() {
                         </section>
 
                         {/* Critical Threats Panel */}
-                        <section className="glass-card p-8 bg-red-500/5 border-red-400/10 group">
+                        <section className="glass-card p-8 bg-red-500/5 border-red-400/10 group shadow-sm">
                             <div className="flex items-center justify-between mb-8">
-                                <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 tracking-[0.3em] font-cyber">
+                                <h3 className="text-xs font-black text-[var(--text-primary)] uppercase flex items-center gap-3 tracking-[0.3em] font-cyber">
                                     <AlertOctagon size={18} className="text-red-500 animate-pulse" /> CRITICAL_THREATS
                                 </h3>
                                 <span className="text-[9px] font-black text-red-500/50 bg-red-500/5 px-3 py-1 rounded-full uppercase border border-red-500/10">{criticalCount} DETECTED</span>
                             </div>
                             <div className="space-y-4">
                                 {filteredLogs.filter(f => f.riskLevel === "CRITICAL" || f.riskLevel === "MEDIUM").slice(0, 4).map((log, i) => (
-                                    <div key={i} className="p-5 bg-black/60 border border-red-500/10 rounded-2xl hover:border-red-500/20 transition-all">
+                                    <div key={i} className="p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-2xl hover:border-red-500/20 transition-all shadow-sm">
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
-                                                <div className={`text-[9px] font-black uppercase tracking-widest mb-1 ${log.riskLevel === 'CRITICAL' ? 'text-red-500' : 'text-orange-400'}`}>{log.riskLevel}_RISK</div>
-                                                <div className="text-[11px] text-white font-black uppercase truncate">{log.candidate?.split('@')[0]}</div>
-                                                <div className="text-[9px] text-red-500/50 font-black uppercase mt-1 font-mono">{log.metadata?.ip}</div>
+                                                <div className={`text-[9px] font-black uppercase tracking-widest mb-1 ${log.riskLevel === 'CRITICAL' ? 'text-red-600 dark:text-red-500' : 'text-orange-600 dark:text-orange-400'}`}>{log.riskLevel}_RISK</div>
+                                                <div className="text-[11px] text-[var(--text-primary)] font-black uppercase truncate">{log.candidate?.split('@')[0]}</div>
+                                                <div className="text-[9px] text-red-600 dark:text-red-500/50 font-black uppercase mt-1 font-mono">{log.metadata?.ip}</div>
                                             </div>
                                             <div className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-1 rounded-xl border border-red-500/20 shrink-0">{log.violationsCount} FLAGS</div>
                                         </div>
@@ -247,9 +260,9 @@ export default function AdminDashboard() {
                         </section>
 
                         {/* Behavioral Biometrics Summary */}
-                        <section className="glass-card p-8 border-blue-500/10 bg-blue-500/5">
-                            <h3 className="text-xs font-black text-white uppercase mb-6 flex items-center gap-3 tracking-[0.3em] font-cyber">
-                                <Cpu size={18} className="text-blue-400" /> BIOMETRIC_SUMMARY
+                        <section className="glass-card p-8 border-blue-500/10 bg-blue-500/5 shadow-sm">
+                            <h3 className="text-xs font-black text-[var(--text-primary)] uppercase mb-6 flex items-center gap-3 tracking-[0.3em] font-cyber">
+                                <Cpu size={18} className="text-blue-500 dark:text-blue-400" /> BIOMETRIC_SUMMARY
                             </h3>
                             <div className="space-y-4">
                                 {['COPY_PASTE_ATTEMPT', 'HOTKEY_BYPASS_ATTEMPT', 'TAB_SWITCH_OR_NOTIFICATION', 'FULLSCREEN_EXIT'].map(type => {
@@ -258,8 +271,8 @@ export default function AdminDashboard() {
                                     return (
                                         <div key={type} className="space-y-2">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{type.replace(/_/g, ' ')}</span>
-                                                <span className="text-[10px] font-black text-white">{count}</span>
+                                                <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest opacity-60">{type.replace(/_/g, ' ')}</span>
+                                                <span className="text-[10px] font-black text-[var(--text-primary)]">{count}</span>
                                             </div>
                                             <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
                                                 <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${Math.min((count / Math.max(totalViolations, 1)) * 100, 100)}%` }}></div>
@@ -273,22 +286,22 @@ export default function AdminDashboard() {
 
                     {/* Right Column — Main Forensic Table */}
                     <div className="lg:col-span-8">
-                        <section className="glass-card bg-[#050505]/80 overflow-hidden border-white/5 shadow-[0_50px_100px_rgba(0,0,0,0.4)]">
+                        <section className="glass-card overflow-hidden shadow-xl">
                             {/* Table Header */}
-                            <div className="px-8 py-6 border-b border-white/5 flex flex-col gap-6 bg-white/[0.02]">
+                            <div className="px-8 py-6 border-b border-[var(--border-primary)] flex flex-col gap-6 bg-[var(--bg-secondary)] transition-colors duration-300">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="p-3 bg-teal-500/10 rounded-xl border border-teal-500/20">
-                                            <Fingerprint size={20} className="text-teal-500" />
+                                            <Fingerprint size={20} className="text-teal-600 dark:text-teal-500" />
                                         </div>
                                         <div>
-                                            <h2 className="text-lg font-black text-white uppercase italic tracking-tighter font-cyber leading-none">IDENTITY_AUDIT_LOGS</h2>
-                                            <p className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.3em]">{filteredLogs.length} RECORDS // Auto-refresh: 30s</p>
+                                            <h2 className="text-lg font-black text-[var(--text-primary)] uppercase italic tracking-tighter font-cyber leading-none">IDENTITY_AUDIT_LOGS</h2>
+                                            <p className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-[0.3em] opacity-50">{filteredLogs.length} RECORDS // Auto-refresh: 30s</p>
                                         </div>
                                     </div>
                                     <div className="relative">
-                                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
-                                        <input type="text" className="cyber-input w-64 pl-10 py-2.5 text-[10px] bg-black/40"
+                                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] opacity-50" />
+                                        <input type="text" className="cyber-input w-64 pl-10 py-2.5 text-[10px] bg-[var(--bg-primary)] border-[var(--border-primary)]"
                                             placeholder="SEARCH_BY_IP_OR_EMAIL..."
                                             value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                     </div>
@@ -298,7 +311,7 @@ export default function AdminDashboard() {
                                 <div className="flex gap-2">
                                     {["ALL", "THREATS", "AUTH", "SESSIONS", "AUDIT"].map(tab => (
                                         <button key={tab} onClick={() => setActiveTab(tab)}
-                                            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-xl border transition-all font-cyber ${activeTab === tab ? 'bg-teal-500 text-black border-teal-500' : 'bg-white/5 text-gray-500 border-white/10 hover:border-white/20'}`}>
+                                            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-xl border transition-all font-cyber ${activeTab === tab ? 'bg-teal-500 text-white dark:text-black border-teal-500' : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border-[var(--border-primary)] hover:border-teal-500/50'}`}>
                                             {tab}
                                         </button>
                                     ))}
@@ -309,7 +322,7 @@ export default function AdminDashboard() {
                             <div className="overflow-x-auto overflow-y-auto max-h-[900px] custom-scrollbar">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-black/60 sticky top-0 z-10 border-b border-white/5">
+                                        <tr className="bg-[var(--bg-secondary)] sticky top-0 z-10 border-b border-[var(--border-primary)]">
                                             {activeTab === 'AUDIT' ? (
                                                 <>
                                                     <th className="px-6 py-4 text-[9px] font-black text-teal-500 font-cyber uppercase tracking-[0.3em]">Event Type</th>
@@ -333,12 +346,12 @@ export default function AdminDashboard() {
                                     <tbody className="divide-y divide-white/[0.03]">
                                         {activeTab === 'AUDIT' ? (
                                             auditLogs.length > 0 ? auditLogs.map((log) => (
-                                                <tr key={log.id} className="group hover:bg-white/[0.02] transition-colors">
+                                                <tr key={log.id} className="group hover:bg-[var(--bg-secondary)] transition-colors">
                                                     <td className="px-6 py-4">
-                                                        <span className="text-white font-black uppercase text-xs tracking-tighter">{log.event_type}</span>
+                                                        <span className="text-[var(--text-primary)] font-black uppercase text-xs tracking-tighter">{log.event_type}</span>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">{log.email || 'System'}</span>
+                                                        <span className="text-[10px] text-[var(--text-secondary)] font-bold uppercase">{log.email || 'System'}</span>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <span className="text-[10px] text-gray-500 font-mono">{log.ip_address}</span>
@@ -348,7 +361,7 @@ export default function AdminDashboard() {
                                                         <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded border tracking-widest ${log.risk_level === 'CRITICAL' ? 'text-red-500 bg-red-500/10 border-red-500/20' : log.risk_level === 'MEDIUM' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-teal-500 bg-teal-500/5 border-teal-500/10'}`}>{log.risk_level}</span>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
-                                                        <span className="text-[10px] text-white font-black uppercase">{new Date(log.created_at).toLocaleString()}</span>
+                                                        <span className="text-[10px] text-[var(--text-primary)] font-black uppercase">{new Date(log.created_at).toLocaleString()}</span>
                                                     </td>
                                                 </tr>
                                             )) : (
@@ -359,13 +372,13 @@ export default function AdminDashboard() {
                                         ) : (
                                             filteredLogs.map((f) => (
                                             <>
-                                                <tr key={f.id} className="group hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setExpandedRow(expandedRow === f.id ? null : f.id)}>
+                                                <tr key={f.id} className="group hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer" onClick={() => setExpandedRow(expandedRow === f.id ? null : f.id)}>
                                                     <td className="px-6 py-4 relative">
                                                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-0 group-hover:h-8 bg-teal-500 transition-all rounded-r-full duration-500"></div>
                                                         <div className="flex flex-col gap-0.5">
-                                                            <span className="text-white font-black uppercase text-xs tracking-tighter">{f.candidate?.split('@')[0] || 'ANON'}</span>
-                                                            <span className="text-[8px] text-gray-600 font-bold uppercase tracking-widest truncate max-w-[140px]">{f.job}</span>
-                                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded mt-0.5 w-fit ${f.status === 'AUTH_SUCCESS' ? 'text-teal-500 bg-teal-500/10' : f.status === 'TERMINATED_DUE_TO_VIOLATION' ? 'text-red-500 bg-red-500/10' : 'text-gray-500 bg-white/5'}`}>{f.status}</span>
+                                                            <span className="text-[var(--text-primary)] font-black uppercase text-xs tracking-tighter">{f.candidate?.split('@')[0] || 'ANON'}</span>
+                                                            <span className="text-[8px] text-[var(--text-secondary)] font-bold uppercase tracking-widest truncate max-w-[140px] opacity-60">{f.job}</span>
+                                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded mt-0.5 w-fit ${f.status === 'AUTH_SUCCESS' ? 'text-teal-600 dark:text-teal-500 bg-teal-500/10' : f.status === 'TERMINATED_DUE_TO_VIOLATION' ? 'text-red-500 bg-red-500/10' : 'text-[var(--text-secondary)] bg-[var(--bg-secondary)] opacity-50'}`}>{f.status}</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4">
@@ -374,7 +387,7 @@ export default function AdminDashboard() {
                                                                 <Globe size={10} className="opacity-40" /> {f.metadata?.ip || '127.0.0.1'}
                                                             </div>
                                                             {f.metadata?.device_fingerprint && (
-                                                                <div className="flex items-center gap-1.5 text-[8px] text-gray-600">
+                                                                <div className="flex items-center gap-1.5 text-[8px] text-[var(--text-secondary)] opacity-50">
                                                                     <Monitor size={9} /> {f.metadata.device_fingerprint.screen} / {f.metadata.device_fingerprint.platform}
                                                                 </div>
                                                             )}
@@ -413,8 +426,8 @@ export default function AdminDashboard() {
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex flex-col items-end gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
-                                                            <span className="text-[10px] text-white font-black uppercase">{new Date(f.timestamp || Date.now()).toLocaleTimeString()}</span>
-                                                            <span className="text-[8px] text-gray-600 font-bold uppercase">{new Date(f.timestamp || Date.now()).toLocaleDateString()}</span>
+                                                            <span className="text-[10px] text-[var(--text-primary)] font-black uppercase">{new Date(f.timestamp || Date.now()).toLocaleTimeString()}</span>
+                                                            <span className="text-[8px] text-[var(--text-secondary)] font-bold uppercase">{new Date(f.timestamp || Date.now()).toLocaleDateString()}</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
@@ -427,21 +440,21 @@ export default function AdminDashboard() {
                                                 {/* Expanded Detail Row */}
                                                 {expandedRow === f.id && (
                                                     <tr key={`${f.id}-expanded`}>
-                                                        <td colSpan={6} className="bg-black/60 px-8 py-6 border-b border-teal-500/10">
+                                                        <td colSpan={6} className="bg-[var(--bg-secondary)] px-8 py-6 border-b border-[var(--border-primary)] shadow-inner">
                                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                                 {/* Device Fingerprint */}
                                                                 <div className="space-y-3">
-                                                                    <h4 className="text-[9px] font-black text-teal-500 uppercase tracking-[0.3em] flex items-center gap-2 font-cyber"><Monitor size={12} /> DEVICE_FINGERPRINT</h4>
+                                                                    <h4 className="text-[9px] font-black text-teal-600 dark:text-teal-500 uppercase tracking-[0.3em] flex items-center gap-2 font-cyber"><Monitor size={12} /> DEVICE_FINGERPRINT</h4>
                                                                     {f.metadata?.device_fingerprint ? (
                                                                         <div className="space-y-1.5">
                                                                             {Object.entries(f.metadata.device_fingerprint).map(([k, v]) => (
                                                                                 <div key={k} className="flex justify-between items-center">
-                                                                                    <span className="text-[8px] text-gray-600 font-black uppercase">{k}:</span>
-                                                                                    <span className="text-[9px] text-gray-300 font-mono">{String(v)}</span>
+                                                                                    <span className="text-[8px] text-[var(--text-secondary)] font-black uppercase opacity-60">{k}:</span>
+                                                                                    <span className="text-[9px] text-[var(--text-primary)] font-mono">{String(v)}</span>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
-                                                                    ) : <p className="text-[9px] text-gray-700 italic">No fingerprint captured. Log out and back in to capture.</p>}
+                                                                    ) : <p className="text-[9px] text-[var(--text-secondary)] italic opacity-50">No fingerprint captured. Log out and back in to capture.</p>}
                                                                 </div>
 
                                                                 {/* Violation Breakdown */}
@@ -451,12 +464,12 @@ export default function AdminDashboard() {
                                                                         <div className="space-y-1.5">
                                                                             {Object.entries(f.violationBreakdown).map(([type, count]) => (
                                                                                 <div key={type} className="flex justify-between items-center p-2 bg-red-500/5 border border-red-500/10 rounded-xl">
-                                                                                    <span className="text-[8px] text-gray-400 font-black uppercase truncate max-w-[120px]">{type.replace(/_/g, ' ')}</span>
-                                                                                    <span className="text-[10px] text-red-400 font-black">{count}x</span>
+                                                                                    <span className="text-[8px] text-[var(--text-secondary)] font-black uppercase truncate max-w-[120px] opacity-70">{type.replace(/_/g, ' ')}</span>
+                                                                                    <span className="text-[10px] text-red-600 dark:text-red-400 font-black">{count}x</span>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
-                                                                    ) : <p className="text-[9px] text-gray-700 italic">No violations recorded.</p>}
+                                                                    ) : <p className="text-[9px] text-[var(--text-secondary)] italic opacity-50">No violations recorded.</p>}
 
                                                                     {/* Anomaly Flags */}
                                                                     {f.anomalyFlags?.length > 0 && (
@@ -473,7 +486,7 @@ export default function AdminDashboard() {
 
                                                                 {/* Behavioral Biometrics & Login History */}
                                                                 <div className="space-y-3">
-                                                                    <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] flex items-center gap-2 font-cyber"><Activity size={12} /> BIOMETRICS & LOGIN_HIST</h4>
+                                                                    <h4 className="text-[9px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.3em] flex items-center gap-2 font-cyber"><Activity size={12} /> BIOMETRICS & LOGIN_HIST</h4>
                                                                     {f.biometrics ? (
                                                                         <div className="space-y-1.5 mb-4">
                                                                             {[
@@ -484,27 +497,37 @@ export default function AdminDashboard() {
                                                                                 ['ANSWER CHANGES', f.biometrics.answer_changes],
                                                                             ].map(([label, val]) => (
                                                                                 <div key={label} className="flex justify-between">
-                                                                                    <span className="text-[8px] text-gray-600 uppercase">{label}:</span>
-                                                                                    <span className="text-[9px] text-blue-300 font-mono">{val ?? 'N/A'}</span>
+                                                                                    <span className="text-[8px] text-[var(--text-secondary)] uppercase opacity-60">{label}:</span>
+                                                                                    <span className="text-[9px] text-blue-600 dark:text-blue-300 font-mono">{val ?? 'N/A'}</span>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
-                                                                    ) : <p className="text-[9px] text-gray-700 italic mb-3">No biometric data (auth event).</p>}
+                                                                    ) : <p className="text-[9px] text-[var(--text-secondary)] italic mb-3 opacity-50">No biometric data (auth event).</p>}
 
                                                                     {/* Login History */}
-                                                                    <div className="pt-3 border-t border-white/5">
-                                                                        <div className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-2">RECENT LOGINS ({f.loginCount || 0} TOTAL):</div>
+                                                                    <div className="pt-3 border-t border-[var(--border-primary)]">
+                                                                        <div className="text-[8px] text-[var(--text-secondary)] font-black uppercase tracking-widest mb-2 opacity-50">RECENT LOGINS ({f.loginCount || 0} TOTAL):</div>
                                                                         {f.loginHistory?.length > 0 ? f.loginHistory.map((lh, i) => (
-                                                                            <div key={i} className="text-[8px] text-gray-600 font-mono mb-1 flex items-center gap-1.5">
+                                                                            <div key={i} className="text-[8px] text-[var(--text-secondary)] font-mono mb-1 flex items-center gap-1.5 opacity-70">
                                                                                 <Globe size={8} /> {lh.ip} — {new Date(lh.timestamp).toLocaleString()}
                                                                             </div>
-                                                                        )) : <p className="text-[9px] text-gray-700 italic">No login history available.</p>}
+                                                                        )) : <p className="text-[9px] text-[var(--text-secondary)] italic opacity-50">No login history available.</p>}
                                                                     </div>
 
                                                                     {/* Integrity Hash */}
-                                                                    <div className="pt-3 border-t border-white/5">
-                                                                        <div className="text-[8px] text-gray-700 font-black uppercase tracking-widest mb-1">INTEGRITY_HASH:</div>
-                                                                        <div className="text-[7px] text-gray-600 font-mono break-all">{f.integrityHash}</div>
+                                                                    <div className="pt-3 border-t border-[var(--border-primary)]">
+                                                                        <div className="text-[8px] text-[var(--text-secondary)] font-black uppercase tracking-widest mb-1 opacity-50">INTEGRITY_HASH:</div>
+                                                                        <div className="text-[7px] text-[var(--text-secondary)] font-mono break-all opacity-40">{f.integrityHash}</div>
+                                                                    </div>
+
+                                                                    {/* Purge Button (Admin Only) */}
+                                                                    <div className="pt-6">
+                                                                        <button 
+                                                                            onClick={() => handleDeleteAssessment(f.assessment_id)}
+                                                                            className="w-full py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-[9px] font-black text-red-500 uppercase tracking-widest hover:bg-red-500 hover:text-white dark:hover:text-black transition-all flex items-center justify-center gap-2 group/purge"
+                                                                        >
+                                                                            <Trash2 size={12} className="group-hover/purge:animate-bounce" /> PURGE_ASSESSMENT_DATA
+                                                                        </button>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -535,22 +558,22 @@ export default function AdminDashboard() {
 }
 
 const StatPill = ({ label, value, color, bg }) => (
-    <div className={`flex items-center gap-2.5 px-4 py-2 rounded-xl border ${bg}`}>
+    <div className={`flex items-center gap-2.5 px-4 py-2 rounded-xl border ${bg} transition-colors duration-300`}>
         <span className={`text-xl font-black font-cyber italic ${color}`}>{value}</span>
-        <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest">{label}</span>
+        <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest opacity-60">{label}</span>
     </div>
 );
 
 const MetricCard = ({ icon, label, value, sub, color, variant = 'default' }) => (
-    <div className={`glass-card p-8 group hover:translate-y-[-5px] transition-all duration-700 relative overflow-hidden ${variant === 'danger' ? 'border-red-500/20' : 'shadow-[0_0_50px_rgba(0,0,0,0.3)]'}`}>
+    <div className={`glass-card p-8 group hover:translate-y-[-5px] transition-all duration-700 relative overflow-hidden ${variant === 'danger' ? 'border-red-500/20' : 'shadow-sm border-[var(--border-primary)]'}`}>
         <div className="flex justify-between items-start mb-6">
-            <div className={`p-4 rounded-2xl bg-black/40 border border-white/5 ${color} group-hover:scale-110 transition-transform duration-500`}>{icon}</div>
+            <div className={`p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-primary)] ${color} group-hover:scale-110 transition-transform duration-500 shadow-sm`}>{icon}</div>
         </div>
         <div className="space-y-2">
-            <div className="text-3xl font-black font-cyber italic text-white tracking-wider">{value}</div>
-            <div className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">{label}</div>
-            <div className="pt-4 border-t border-white/5 mt-4">
-                <span className="text-[9px] font-bold text-gray-700 uppercase tracking-tighter">{sub}</span>
+            <div className="text-3xl font-black font-cyber italic text-[var(--text-primary)] tracking-wider">{value}</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.4em] text-[var(--text-secondary)] opacity-50">{label}</div>
+            <div className="pt-4 border-t border-[var(--border-primary)] mt-4">
+                <span className="text-[9px] font-bold text-[var(--text-secondary)] uppercase tracking-tighter opacity-40">{sub}</span>
             </div>
         </div>
     </div>

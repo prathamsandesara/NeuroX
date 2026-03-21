@@ -112,17 +112,22 @@ const login = async (req, res) => {
     try {
         const { email, password, deviceFingerprint } = req.body;
 
-        const { data: user } = await supabase
+        const { data: user, error: userError } = await supabase
             .from('users')
             .select('*')
             .eq('email', email)
-            .single();
+            .maybeSingle();
+
+        console.log(`[AUTH_DEBUG] Login attempt for: ${email}`);
+        if (userError) console.error(`[AUTH_DEBUG] Supabase lookup error:`, userError);
 
         if (!user) {
+            console.warn(`[AUTH_DEBUG] User not found: ${email}`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         if (!user.is_verified) {
+            console.warn(`[AUTH_DEBUG] User not verified: ${email}`);
             return res.status(403).json({ error: 'Account not verified' });
         }
 
@@ -135,7 +140,12 @@ const login = async (req, res) => {
             return res.status(429).json({ error: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).` });
         }
 
+        console.log(`[AUTH_DEBUG] Attempting password compare for ${email}`);
+        console.log(`[AUTH_DEBUG] Provided password type: ${typeof password}, length: ${password?.length}`);
+        console.log(`[AUTH_DEBUG] Stored hash length: ${user.password_hash?.length}`);
+        
         const isMatch = await bcrypt.compare(password, user.password_hash);
+        console.log(`[AUTH_DEBUG] Password match for ${email}: ${isMatch}`);
 
         // --- FAILED LOGIN ---
         if (!isMatch) {
@@ -152,7 +162,10 @@ const login = async (req, res) => {
             }
             supabase.from('users').update({ security_metadata: updatedMeta }).eq('id', user.id).then();
             await logSecurityEvent('LOGIN_FAILED', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], { failedAttempts }, failedAttempts >= 5 ? 'CRITICAL' : 'MEDIUM');
-            return res.status(401).json({ error: `Invalid credentials. ${5 - failedAttempts > 0 ? (5 - failedAttempts) + ' attempts remaining before lockout.' : 'Account locked.'}` });
+            return res.status(401).json({ 
+                error: `Invalid credentials. ${5 - failedAttempts > 0 ? (5 - failedAttempts) + ' attempts remaining before lockout.' : 'Account locked.'}`,
+                suggestion: "If you've forgotten your password, please use the 'Forgot Password' link on the login page to securely reset it."
+            });
         }
 
         // --- SUCCESSFUL LOGIN: Capture full security fingerprint ---
@@ -263,9 +276,42 @@ const logout = (req, res) => {
     res.json({ message: 'Logged out' });
 };
 
-const getMe = (req, res) => {
-    // req.user is populated by authMiddleware
-    res.json({ user: req.user });
+const getMe = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (error || !user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Remove sensitive data
+        delete user.password_hash;
+        
+        res.json({ user });
+    } catch (error) {
+        console.error('getMe error:', error);
+        res.status(500).json({ error: 'Failed to fetch user profile' });
+    }
+};
+
+const deleteResume = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { error } = await supabase
+            .from('users')
+            .update({ resume_url: null })
+            .eq('id', userId);
+
+        if (error) throw error;
+        res.json({ message: 'Resume deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete resume' });
+    }
 };
 
 module.exports = {
@@ -275,5 +321,6 @@ module.exports = {
     forgotPassword,
     resetPassword,
     logout,
-    getMe
+    getMe,
+    deleteResume
 };

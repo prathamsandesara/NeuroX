@@ -1,7 +1,4 @@
- * Serving Flask app 'app_jd_parser'
- * Debug mode: off
-WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5005
- * Running on http://192.168.29.127:5005
-Press CTRL+C to quit
+Traceback (most recent call last):
+  File "/Users/sandesara/Desktop/11-03-2026/NeuroX-main(final)/ml/app_jd_parser.py", line 1, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'

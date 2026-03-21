@@ -63,7 +63,12 @@ const parseJD = async (req, res) => {
             .from('assessments')
             .insert([{
                 job_id: job.id,
-                assessment_distribution: mlData.assessment_distribution
+                assessment_distribution: {
+                    ...mlData.assessment_distribution,
+                    mcq_count: req.body.mcq_count || 3,
+                    subjective_count: req.body.subjective_count || 2,
+                    coding_count: req.body.coding_count || 1
+                }
             }])
             .select()
             .single();
@@ -87,8 +92,8 @@ const parseJD = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error parsing JD:', error.message);
-        res.status(500).json({ error: 'Failed to parse JD: ' + error.message });
+        console.error('Error parsing JD:', error);
+        res.status(500).json({ error: error.message || 'Internal Server Error during provisioning' });
     }
 };
 
@@ -115,13 +120,16 @@ const getJobs = async (req, res) => {
             if (error) throw error;
 
             // Post-process to filter submissions to only the current user
-            const filteredJobs = allJobs.map(job => ({
-                ...job,
-                assessments: job.assessments.map(assess => ({
-                    ...assess,
-                    submissions: assess.submissions.filter(s => s.user_id === userId)
-                }))
-            }));
+            // AND ensure only jobs WITH an assessment are shown (Fail-safe)
+            const filteredJobs = allJobs
+                .filter(job => job.assessments && job.assessments.length > 0)
+                .map(job => ({
+                    ...job,
+                    assessments: job.assessments.map(assess => ({
+                        ...assess,
+                        submissions: (assess.submissions || []).filter(s => s.user_id === userId)
+                    }))
+                }));
             return res.json(filteredJobs);
         } else {
             // For Recruiters/HR, fetch only jobs they created.

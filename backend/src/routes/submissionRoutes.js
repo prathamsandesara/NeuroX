@@ -9,11 +9,13 @@ const roleMiddleware = require('../middleware/roleMiddleware');
 router.use(authMiddleware);
 
 router.post('/', roleMiddleware('CANDIDATE'), submissionController.submitAssessment);
-router.post('/start', roleMiddleware('CANDIDATE'), submissionController.startAssessment);
-router.post('/sync', roleMiddleware('CANDIDATE'), submissionController.syncAnswers);
-router.post('/snapshot', roleMiddleware('CANDIDATE'), submissionController.syncSnapshot);
-router.post('/upload-snapshot', roleMiddleware('CANDIDATE'), submissionController.uploadSnapshot);
-router.post('/violation', roleMiddleware('CANDIDATE'), submissionController.logAssessmentViolation);
-router.get('/:submissionId', submissionController.getResult);
+router.post('/start', roleMiddleware(['CANDIDATE', 'RECRUITER', 'ADMIN']), submissionController.startAssessment);
+router.post('/sync', roleMiddleware(['CANDIDATE', 'RECRUITER', 'ADMIN']), submissionController.syncAnswers);
+router.post('/snapshot', roleMiddleware(['CANDIDATE', 'RECRUITER', 'ADMIN']), submissionController.syncSnapshot);
+router.post('/upload-snapshot', roleMiddleware(['CANDIDATE', 'RECRUITER', 'ADMIN']), submissionController.uploadSnapshot);
+router.post('/violation', roleMiddleware(['CANDIDATE', 'RECRUITER', 'ADMIN']), submissionController.logAssessmentViolation);
+router.post('/audio-violation', roleMiddleware(['CANDIDATE']), submissionController.reportAudioViolation);
+router.get('/:submissionId/personalized', submissionController.getPersonalizedQuestions);
+router.get('/:submissionId/result', submissionController.getResult);
 
 module.exports = router;

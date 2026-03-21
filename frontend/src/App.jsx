@@ -14,36 +14,39 @@ import CandidateResult from './pages/CandidateResult';
 import CandidateDetail from './pages/CandidateDetail';
 import LandingPage from './pages/LandingPage';
 
+import { ThemeProvider } from './context/ThemeContext';
+
 function App() {
     return (
         <BrowserRouter>
-            <AuthProvider>
-                <Routes>
+            <ThemeProvider>
+                <AuthProvider>
+                    <Routes>
+                        <Route path="/" element={<Layout />}>
+                            <Route index element={<LandingPage />} />
+                            <Route path="login" element={<Login />} />
+                            <Route path="register" element={<Register />} />
+                            <Route path="verify-otp" element={<VerifyOTP />} />
 
-                    <Route path="/" element={<Layout />}>
-                        <Route index element={<LandingPage />} />
-                        <Route path="login" element={<Login />} />
-                        <Route path="register" element={<Register />} />
-                        <Route path="verify-otp" element={<VerifyOTP />} />
+                            <Route element={<ProtectedRoute allowedRoles={['RECRUITER', 'ADMIN']} />}>
+                                <Route path="recruiter/dashboard" element={<RecruiterDashboard />} />
+                                <Route path="recruiter/candidates/:submissionId" element={<CandidateDetail />} />
+                            </Route>
 
-                        <Route element={<ProtectedRoute allowedRoles={['RECRUITER', 'ADMIN']} />}>
-                            <Route path="recruiter/dashboard" element={<RecruiterDashboard />} />
-                            <Route path="recruiter/candidates/:submissionId" element={<CandidateDetail />} />
+                            <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+                                <Route path="admin/dashboard" element={<AdminDashboard />} />
+                            </Route>
+
+                            <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
+                                <Route path="candidate/dashboard" element={<CandidateDashboard />} />
+                                <Route path="candidate/assessment/:assessmentId" element={<CandidateAssessment />} />
+                                <Route path="candidate/result/:submissionId" element={<CandidateResult />} />
+                            </Route>
                         </Route>
-
-                        <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
-                            <Route path="admin/dashboard" element={<AdminDashboard />} />
-                        </Route>
-
-                        <Route element={<ProtectedRoute allowedRoles={['CANDIDATE']} />}>
-                            <Route path="candidate/dashboard" element={<CandidateDashboard />} />
-                            <Route path="candidate/assessment/:assessmentId" element={<CandidateAssessment />} />
-                            <Route path="candidate/result/:submissionId" element={<CandidateResult />} />
-                        </Route>
-                    </Route>
-                </Routes>
-                <Toaster position="top-right" />
-            </AuthProvider>
+                    </Routes>
+                    <Toaster position="top-right" />
+                </AuthProvider>
+            </ThemeProvider>
         </BrowserRouter>
     );
 }

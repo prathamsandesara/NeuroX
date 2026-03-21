@@ -9,7 +9,7 @@ const generateIntegrityHash = (data) => {
         .digest('hex');
 };
 
-exports.getForensicLogs = async (req, res) => {
+const getForensicLogs = async (req, res) => {
     try {
         // Fetch all users with security_metadata
         const { data: users, error: userError } = await supabase
@@ -141,7 +141,7 @@ exports.getForensicLogs = async (req, res) => {
     }
 };
 
-exports.getAuditLogs = async (req, res) => {
+const getAuditLogs = async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('security_audit_log')
@@ -161,7 +161,7 @@ exports.getAuditLogs = async (req, res) => {
     }
 };
 
-exports.logAudit = async (req, res) => {
+const logAudit = async (req, res) => {
     try {
         const { action, resourceId, details } = req.body;
         const adminId = req.user.id;
@@ -187,7 +187,7 @@ exports.logAudit = async (req, res) => {
     }
 };
 
-exports.getSystemStats = async (req, res) => {
+const getSystemStats = async (req, res) => {
     try {
         console.log('[Admin] Fetching system statistics...');
         const { count: userCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
@@ -206,4 +206,96 @@ exports.getSystemStats = async (req, res) => {
         console.error('[Admin] Stats Fetch Error:', error);
         res.status(500).json({ error: 'Stats Error' });
     }
+};
+const resetCandidateAttempt = async (req, res) => {
+    try {
+        const { submissionId } = req.body;
+        
+        const { data, error } = await supabase
+            .from('submissions')
+            .update({ 
+                attempts_left: 1,
+                status: 'IN_PROGRESS',
+                completed_at: null,
+                score: null,
+                result_generated: false
+            })
+            .eq('id', submissionId)
+            .select();
+
+        if (error) throw error;
+        
+        res.json({ message: 'Candidate attempt reset successfully', data });
+    } catch (error) {
+        console.error('Reset Attempt Error:', error);
+        res.status(500).json({ error: 'Failed to reset attempt' });
+    }
+};
+
+const deleteAssessment = async (req, res) => {
+    try {
+        const { id: assessmentId } = req.params;
+
+        console.log(`[Admin] Initiating purge for Assessment: ${assessmentId}`);
+
+        // 0. Get job_id for full mission purge
+        const { data: assessment, error: fetchError } = await supabase
+            .from('assessments')
+            .select('job_id')
+            .eq('id', assessmentId)
+            .maybeSingle();
+
+        if (fetchError || !assessment) {
+            return res.status(404).json({ error: 'Assessment not found' });
+        }
+
+        const jobId = assessment.job_id;
+
+        // 1. Delete associated questions
+        const { error: qError } = await supabase
+            .from('questions')
+            .delete()
+            .eq('assessment_id', assessmentId);
+
+        if (qError) throw qError;
+
+        // 2. Delete associated submissions
+        const { error: sError } = await supabase
+            .from('submissions')
+            .delete()
+            .eq('assessment_id', assessmentId);
+
+        if (sError) throw sError;
+
+        // 3. Delete the assessment itself
+        const { error: aError } = await supabase
+            .from('assessments')
+            .delete()
+            .eq('id', assessmentId);
+
+        if (aError) throw aError;
+
+        // 4. Delete the Job itself (Full Purge)
+        if (jobId) {
+            const { error: jError } = await supabase
+                .from('jobs')
+                .delete()
+                .eq('id', jobId);
+            if (jError) console.error(`[Admin] Job deletion failed for ${jobId}:`, jError);
+        }
+
+        res.json({ message: 'MISSION_PURGED_SUCCESSFULLY' });
+    } catch (error) {
+        console.error('Purge error:', error);
+        res.status(500).json({ error: 'Failed to purge assessment data' });
+    }
+};
+
+module.exports = {
+    getForensicLogs,
+    getAuditLogs,
+    logAudit,
+    getSystemStats,
+    resetCandidateAttempt,
+    deleteAssessment
 };

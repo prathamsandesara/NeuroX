@@ -35,13 +35,17 @@ const executeCode = async (language, sourceCode, stdin = '') => {
     };
 
     try {
+        console.log(`[Piston] Executing ${config.language} (v${config.version}) on ${PISTON_API_URL}`);
         const response = await axios.post(PISTON_API_URL, payload);
-        // The user specifically wants the 'run' object: { stdout, stderr, code, time }
         if (response.data && response.data.run) {
             return response.data.run;
         }
         throw new Error('Invalid Piston API Response');
     } catch (error) {
+        if (error.response?.status === 401) {
+            console.error('[Piston_Critical] 401 Unauthorized. Using fallback result.');
+            return { stdout: "Execution failed (Public API Limit/Auth Required)", stderr: "", code: 1 };
+        }
         console.error('Piston Execution Error:', error.message);
         throw error;
     }

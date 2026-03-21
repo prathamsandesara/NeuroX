@@ -18,6 +18,12 @@ const internalGenerateAssessment = async (jobId) => {
     const skills = Array.isArray(job.skills) ? job.skills : [];
     const difficulty = job.difficulty_level || 'INTERMEDIATE';
     const role = job.title;
+    
+    // NEW: Use configurable counts if they exist in the distribution JSON, else default
+    const dist = assessment.assessment_distribution || {};
+    const mcq_count = dist.mcq_count || assessment.mcq_count || 3;
+    const subjective_count = dist.subjective_count || assessment.subjective_count || 2;
+    const coding_count = dist.coding_count || assessment.coding_count || 1;
 
     // Helper for Groq Safe Parsing
     const getCleanJson = (content) => {
@@ -58,9 +64,10 @@ Difficulty: ${difficulty}
 
 Rules:
 - STRICTLY DSA-BASED. Only use these topics: Arrays, Double Linked List, Binary Search Tree, Heap, Graph Algorithms, Dynamic Programming, Greedy Algorithms, Bit Manipulation.
-- Output 3 MCQ questions.
+- Output ${mcq_count} MCQ questions.
 - Each question must have 4 options and 1 correct answer (A/B/C/D).
 - Do NOT include explanations
+- Do NOT include the A/B/C/D options inside the 'question' string. The 'question' field should ONLY contain the question text.
 - Output STRICTLY valid JSON array
 - Marking: Each question is worth 1 mark
 - IMPORTANT: Use \\n for newlines in strings. No literal newlines.
@@ -91,7 +98,7 @@ Difficulty: ${difficulty}
 
 Rules:
 - STRICTLY DSA-BASED. Only use these topics: Time/Space Complexity, System Design Patterns (related to DSA), Memory Allocation, Recursion Depth, Tree/Graph Traversal Trade-offs.
-- Output 2 subjective questions.
+- Output ${subjective_count} subjective questions.
 - Test reasoning, trade-offs, and decision making
 - Output STRICT JSON only
 - Marking: Each question is worth 4 marks
@@ -116,33 +123,35 @@ Output Format:
     };
 
     const generateCoding = async () => {
-        const prompt = `You are a coding assessment generator specializing in professional high-level evaluation.
-Base Problem: Solve a Data Structures and Algorithms (DSA) problem. This is a general technical assessment independent of the specific job role.
-Difficulty Level: ${difficulty}
+        const seed = Date.now().toString(36) + Math.random().toString(36).substr(2);
+        const prompt = `You are a coding assessment generator.
+        Difficulty Level: ${difficulty}
+        Role Reference: ${role}
+        RANDOM_SEED: ${seed}
 
-Rules:
-- STRICTLY DSA-BASED. Focus on classic algorithmic challenges (e.g., Arrays, Strings, Hashing, Stack, Queue, Linked List, Trees, Graphs, Recursion, Dynamic Programming).
-- The problem must be professional and standardized (LeetCode style).
-- Ensure it is problem-solving oriented, NOT language trivia.
-- Output STRICT JSON only.
-- Marking: 10 marks total.
-- IMPORTANT: Use \\n for newlines in strings. No literal newlines.
-- NO BOILERPLATE: Do NOT generate starter code or function signatures. Candidate starts with an empty editor.
+        Rules:
+        - Generate one UNIQUE DSA coding problem (LeetCode Style).
+        - IMPORTANT: Do NOT repeat common problems like 'Two Sum' or 'Reverse String'. 
+        - Use the RANDOM_SEED to ensure variety. Select from topics: ${['Graphs', 'DP', 'Heaps', 'Backtracking', 'Segment Trees'][Math.floor(Math.random() * 5)]} or similar advanced areas if difficulty is high.
+        - Output STRICT JSON only.
+        - Marking: 10 marks total.
+        - No boilerplate code.
+        - Output ${coding_count} coding problem(s).
+        - Include exactly 8-10 test cases in total. Only the first 3 will be shown to the candidate.
 
-Output Format:
-{
-  "type": "CODING",
-  "topic": "Arrays|Strings|Hashing|...", 
-  "problem_statement": "string",
-  "input_format": "string",
-  "output_format": "string",
-  "constraints": "string",
-  "sample_input": "string",
-  "sample_output": "string",
-  "test_cases": [{"input": "string", "output": "string"}],
-  "marks": 10
-}
-Include exactly 8-10 test cases in total. Only the first 3 will be shown to the candidate.`;
+        Output Format:
+        {
+          "type": "CODING",
+          "topic": "string", 
+          "problem_statement": "string",
+          "input_format": "string",
+          "output_format": "string",
+          "constraints": "string",
+          "sample_input": "string",
+          "sample_output": "string",
+          "test_cases": [{"input": "string", "output": "string"}],
+          "marks": 10
+        }`;
 
         const response = await aiClient.chat.completions.create({
             model: "llama-3.3-70b-versatile",
@@ -170,21 +179,23 @@ Include exactly 8-10 test cases in total. Only the first 3 will be shown to the 
             subjectiveResult.forEach(q => questionsToInsert.push({ assessment_id: assessment.id, type: 'SUBJECTIVE', content: q, marks: 4, difficulty }));
         }
 
-        if (codingResult && typeof codingResult === 'object') {
-            // Ensure codingResult has mandatory fields
-            const sanitizedCoding = {
-                ...codingResult,
-                problem_statement: codingResult.problem_statement || "Problem statement missing.",
-                test_cases: Array.isArray(codingResult.test_cases) ? codingResult.test_cases : []
-            };
+        if (codingResult) {
+            const codingArray = Array.isArray(codingResult) ? codingResult : [codingResult];
+            codingArray.forEach(c => {
+                const sanitizedCoding = {
+                    ...c,
+                    problem_statement: c.problem_statement || "Problem statement missing.",
+                    test_cases: Array.isArray(c.test_cases) ? c.test_cases : []
+                };
 
-            questionsToInsert.push({
-                assessment_id: assessment.id,
-                type: 'CODING',
-                content: sanitizedCoding,
-                marks: codingResult.marks || 10,
-                topic: codingResult.topic || 'General',
-                difficulty
+                questionsToInsert.push({
+                    assessment_id: assessment.id,
+                    type: 'CODING',
+                    content: sanitizedCoding,
+                    marks: c.marks || 10,
+                    topic: c.topic || 'General',
+                    difficulty
+                });
             });
         }
 

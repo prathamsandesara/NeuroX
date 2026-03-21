@@ -24,10 +24,18 @@ const upload = multer({
     }
 });
 
+const imageUpload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 2 * 1024 * 1024 // 2MB limit for snapshots
+    }
+});
+
 // Protect all routes
 router.use(authMiddleware);
 
 router.post('/resume', upload.single('resume'), candidateController.uploadResume);
+router.post('/snapshot', imageUpload.single('snapshot'), candidateController.uploadSnapshot);
 router.get('/profile', candidateController.getProfile);
 
 module.exports = router;

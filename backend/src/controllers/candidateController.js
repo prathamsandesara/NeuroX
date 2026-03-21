@@ -94,7 +94,79 @@ const uploadResume = async (req, res) => {
     }
 };
 
+const uploadSnapshot = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No snapshot provided' });
+        }
+
+        const { submissionId } = req.body;
+        if (!submissionId) {
+            return res.status(400).json({ error: 'Submission ID required' });
+        }
+
+        const file = req.file;
+        const userId = req.user.id;
+        const fileName = `snapshot_${submissionId}_${Date.now()}.jpg`;
+
+        const { data, error } = await supabase.storage
+            .from('snapshots')
+            .upload(fileName, file.buffer, {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('snapshots')
+            .getPublicUrl(fileName);
+
+        // Update the submission record with the latest snapshot
+        const { error: dbError } = await supabase
+            .from('submissions')
+            .update({ 
+                details: supabase.rpc('jsonb_set', {
+                    target: 'details',
+                    path: '{last_snapshot_url}',
+                    value: `"${publicUrl}"`,
+                    create_missing: true
+                })
+            })
+            .eq('id', submissionId);
+
+        // Note: Direct JSONB update via supabase-js can be tricky.
+        // Alternative: Fetch, merge, and update.
+        const { data: submission, error: fetchError } = await supabase
+            .from('submissions')
+            .select('details')
+            .eq('id', submissionId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const updatedDetails = {
+            ...(submission.details || {}),
+            last_snapshot_url: publicUrl
+        };
+
+        const { error: updateError } = await supabase
+            .from('submissions')
+            .update({ details: updatedDetails })
+            .eq('id', submissionId);
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, url: publicUrl });
+
+    } catch (error) {
+        console.error('Snapshot upload error:', error);
+        res.status(500).json({ error: 'Failed to upload snapshot' });
+    }
+};
+
 module.exports = {
     uploadResume,
-    getProfile
+    getProfile,
+    uploadSnapshot
 };

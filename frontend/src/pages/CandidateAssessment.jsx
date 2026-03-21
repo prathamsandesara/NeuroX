@@ -7,7 +7,7 @@ import {
     Shield, Play, Timer, ArrowRight, ArrowLeft,
     Lock, AlertCircle, Terminal, Cpu, Zap,
     CheckCircle2, Info, ChevronRight, Activity, Radar,
-    AlertTriangle, ShieldAlert, Camera, Mic, Wifi, Server
+    AlertTriangle, ShieldAlert, Camera, Mic, Wifi, Server, Target
 } from "lucide-react";
 import { Editor } from "@monaco-editor/react";
 import io from "socket.io-client";
@@ -20,6 +20,7 @@ export default function CandidateAssessment() {
     const [answers, setAnswers] = useState({});
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [personalizedQuestions, setPersonalizedQuestions] = useState([]);
 
     // Proctoring & Status State
     const [examStarted, setExamStarted] = useState(false);
@@ -71,6 +72,13 @@ export default function CandidateAssessment() {
                 return;
             }
             setQuestions(res.data);
+            
+            // NEW: Fetch Personalized Questions from Submission state (using candidate-safe endpoint)
+            const { data: personaRes } = await api.get(`/api/submissions/${data.submissionId}/personalized`);
+            if (personaRes?.personalizedQuestions) {
+                setPersonalizedQuestions(personaRes.personalizedQuestions);
+            }
+
             setLoading(false);
         } catch (error) {
             console.error("Session Init Error:", error);
@@ -207,13 +215,73 @@ export default function CandidateAssessment() {
                 console.error("Error adding received ice candidate", e);
             }
         });
+
+        startAudioMonitor(localStreamRef.current);
+    };
+
+    const startAudioMonitor = (stream) => {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyzer = audioContext.createAnalyser();
+            analyzer.fftSize = 512;
+            source.connect(analyzer);
+
+            const bufferLength = analyzer.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            let spokeDetected = false;
+            let silenceStartTime = Date.now();
+
+            const checkAudio = () => {
+                if (!examStarted) return;
+                analyzer.getByteFrequencyData(dataArray);
+
+                // Simple voice frequency range check (approx 85Hz - 255Hz, mapped to bins)
+                // For a 44.1kHz sample rate, 512 fft, each bin is ~86Hz
+                const voiceBins = dataArray.slice(1, 4); 
+                const averageVolume = voiceBins.reduce((a, b) => a + b, 0) / voiceBins.length;
+
+                if (averageVolume > 40) { // Threshold for "Speech-like" volume
+                    if (!spokeDetected) {
+                        console.log("[Security] Voice anomaly detected");
+                        spokeDetected = true;
+                        triggerAudioViolation();
+                    }
+                    silenceStartTime = Date.now();
+                } else if (Date.now() - silenceStartTime > 5000) {
+                    spokeDetected = false; // Reset after 5s of silence
+                }
+
+                requestAnimationFrame(checkAudio);
+            };
+            checkAudio();
+        } catch (e) {
+            console.error("Audio Monitor failed to start:", e);
+        }
+    };
+
+    const triggerAudioViolation = async () => {
+        try {
+            await api.post("/api/submissions/audio-violation", {
+                submissionId,
+                type: 'AUDIO_ANOMALY',
+                reason: 'Acoustic pattern matching human speech detected in environment.'
+            });
+            // We don't toast this to the candidate (ninja proctoring), 
+            // but we can if we want to be strict.
+        } catch (e) {
+            console.error("Failed to report audio violation");
+        }
     };
 
     const handleFullscreenChange = () => {
-        const isFull = !!document.fullscreenElement;
+        const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
         setIsFullscreen(isFull);
-        if (examStarted && !isFull) {
+        if (examStarted && !isFull && !submitting) {
             triggerViolation("FULLSCREEN_EXIT");
+            // Attempt auto-re-entry or alert
+            toast.error("SECURITY_ALERT: Fullscreen exit detected. Re-entry required immediately.");
         }
     };
 
@@ -259,11 +327,19 @@ export default function CandidateAssessment() {
         }
     };
 
+    const blockEvent = (e) => {
+        e.preventDefault();
+        return false;
+    };
+
     // Forensic Snapshot System
     useEffect(() => {
         let snapshotInterval;
         if (examStarted && submissionId) {
-            snapshotInterval = setInterval(takeForensicSnapshot, 60000); // Every 60s
+            // Take initial snapshot immediately
+            takeForensicSnapshot();
+            // Then every 60s
+            snapshotInterval = setInterval(takeForensicSnapshot, 60000);
         }
         return () => clearInterval(snapshotInterval);
     }, [examStarted, submissionId]);
@@ -359,6 +435,7 @@ export default function CandidateAssessment() {
         let duration = 0;
 
         if (currentSection === "MCQ") duration = sectionQuestions.length * 60;
+        else if (currentSection === "PERSONALIZED") duration = (personalizedQuestions.length || 2) * 240;
         else if (currentSection === "SUBJECTIVE") duration = sectionQuestions.length * 240;
         else if (currentSection === "CODING") duration = 1200; // 20 mins for coding
 
@@ -376,7 +453,11 @@ export default function CandidateAssessment() {
     };
 
     const handleTimeOut = () => {
-        if (currentSection === "MCQ") setCurrentSection("SUBJECTIVE");
+        if (currentSection === "MCQ") {
+            if (personalizedQuestions.length > 0) setCurrentSection("PERSONALIZED");
+            else setCurrentSection("SUBJECTIVE");
+        }
+        else if (currentSection === "PERSONALIZED") setCurrentSection("SUBJECTIVE");
         else if (currentSection === "SUBJECTIVE") setCurrentSection("CODING");
         else handleSubmit(true);
     };
@@ -404,12 +485,25 @@ export default function CandidateAssessment() {
 
     const handleSubmit = async (isAuto = false) => {
         setSubmitting(true);
+        
+        // Auto-exit fullscreen on submission
         try {
-            await api.post("/api/submissions", {
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+                if (document.exitFullscreen) await document.exitFullscreen();
+                else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+                else if (document.mozCancelFullScreen) await document.mozCancelFullScreen();
+                else if (document.msExitFullscreen) await document.msExitFullscreen();
+            }
+        } catch (err) {
+            console.warn("[NeuroX] Fullscreen exit failed:", err);
+        }
+
+        try {
+            const response = await api.post("/api/submissions", {
                 submissionId,
                 answers: answers
             });
-            if (!isAuto) {
+            if (response.status === 200) {
                 navigate(`/candidate/result/${submissionId}`);
             }
         } catch (error) {
@@ -419,6 +513,8 @@ export default function CandidateAssessment() {
             setSubmitting(false);
         }
     };
+
+    // captureSnapshot was redundant with takeForensicSnapshot
 
     const handleAnswerChange = (questionId, value, lang = null) => {
         metricsRef.current.answerChanges++;
@@ -430,16 +526,41 @@ export default function CandidateAssessment() {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-[#020204] flex flex-col items-center justify-center font-cyber text-teal-400 overflow-hidden relative">
+        <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center font-cyber text-teal-600 dark:text-teal-400 overflow-hidden relative transition-colors duration-300">
             <div className="noise-overlay" />
-            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none animate-pulse" />
-            <div className="relative">
-                <div className="w-24 h-24 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_2s_linear_infinite] mb-8" />
+            <div className="absolute inset-0 bg-glow-teal opacity-20 pointer-events-none" />
+            
+            {/* High-Tech Loading Animation */}
+            <div className="relative group">
+                <div className="w-32 h-32 border-4 border-teal-500/10 border-t-teal-500 rounded-full animate-[spin_1.5s_linear_infinite] mb-12 shadow-[0_0_50px_rgba(20,184,166,0.2)]" />
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <Activity size={24} className="animate-pulse" />
+                    <div className="w-16 h-16 border-2 border-blue-500/20 border-b-blue-500 rounded-full animate-[spin_3s_linear_infinite_reverse]" />
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <Target size={32} className="text-teal-500 animate-pulse" />
                 </div>
             </div>
-            <div className="tracking-[0.8em] animate-pulse text-[10px] font-bold uppercase text-slate-500">Decrypting_Secure_Protocol...</div>
+
+            <div className="space-y-4 text-center relative z-10">
+                <div className="tracking-[1em] font-black uppercase text-[12px] animate-pulse">
+                    INITIALIZING_<span className="text-blue-500">KERNEL</span>
+                </div>
+                <div className="flex items-center justify-center gap-1.5">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />
+                    ))}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-[0.4em] opacity-40 mt-8">
+                    Establishing_Secure_Handshake_Proc_v4.5
+                </div>
+            </div>
+
+            {/* Background HUD decorative element */}
+            <div className="absolute bottom-10 left-10 opacity-10 font-mono text-[10px] space-y-1">
+                <div>&gt; SYNC_STATE: ATTEMPTING</div>
+                <div>&gt; ENCRYPTION: AES_256_GCM</div>
+                <div>&gt; NODE_ID: {window.crypto.randomUUID().substring(0, 8)}</div>
+            </div>
         </div>
     );
 
@@ -454,10 +575,12 @@ export default function CandidateAssessment() {
         );
     }
 
-    const currentQuestions = questions.filter(q => q.type === currentSection);
+    const currentQuestions = currentSection === "PERSONALIZED" 
+        ? personalizedQuestions 
+        : questions.filter(q => q.type === currentSection);
     
     return (
-        <div className="min-h-screen bg-[#020204] text-slate-300 p-6 font-sans select-none pb-32 relative overflow-hidden">
+        <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-secondary)] p-6 font-sans select-none pb-32 relative overflow-hidden transition-colors duration-300">
             <ViolationModal
                 isOpen={isModalOpen}
                 type={violationType}
@@ -465,69 +588,76 @@ export default function CandidateAssessment() {
             />
 
             {/* Local Proctoring Preview */}
-            <div className="fixed bottom-8 right-8 w-48 aspect-video bg-black/80 rounded-2xl border border-teal-500/30 overflow-hidden z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.5)] group/camera">
+            <div className="fixed bottom-8 right-8 w-48 aspect-video bg-[var(--bg-secondary)] backdrop-blur-xl rounded-2xl border border-teal-500/30 overflow-hidden z-[100] shadow-2xl group/camera transition-colors duration-300">
                 <VideoPreview stream={localStreamRef.current} isActive={localStreamActive} />
                 <div className="absolute top-2 left-2 flex items-center gap-2">
                     <div className={`w-1.5 h-1.5 rounded-full ${localStreamActive ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
-                    <span className="text-[7px] font-black text-white/50 uppercase tracking-widest font-cyber">LIVE_PROCTOR_FEED</span>
+                    <span className="text-[7px] font-black text-[var(--text-primary)] opacity-50 uppercase tracking-widest font-cyber">LIVE_PROCTOR_FEED</span>
                 </div>
             </div>
 
             {/* Left HUD: System Monitor */}
             <div className="fixed left-8 top-1/2 -translate-y-1/2 w-16 space-y-8 z-50 hidden lg:flex flex-col items-center">
                 <div className="flex flex-col items-center gap-2">
-                    <div className="h-40 w-1 bg-white/5 rounded-full relative overflow-hidden">
+                    <div className="h-40 w-1 bg-[var(--border-primary)] rounded-full relative overflow-hidden">
                         <div
                             className="absolute bottom-0 w-full bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)] transition-all duration-1000"
                             style={{ height: '85%' }}
                         ></div>
                     </div>
-                    <span className="text-[8px] font-black text-gray-600 vertical-text uppercase tracking-widest">SYSTEM_HEALTH</span>
+                    <span className="text-[8px] font-black text-[var(--text-secondary)] opacity-50 vertical-text uppercase tracking-widest">SYSTEM_HEALTH</span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
-                    <div className="h-40 w-1 bg-white/5 rounded-full relative overflow-hidden">
+                    <div className="h-40 w-1 bg-[var(--border-primary)] rounded-full relative overflow-hidden">
                         <div
                             className="absolute bottom-0 w-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-1000"
                             style={{ height: `${Math.min(metricsRef.current.focusLostCount * 20, 100)}%` }}
                         ></div>
                     </div>
-                    <span className="text-[8px] font-black text-gray-600 vertical-text uppercase tracking-widest">THREAT_LEVEL</span>
+                    <span className="text-[8px] font-black text-[var(--text-secondary)] opacity-50 vertical-text uppercase tracking-widest">THREAT_LEVEL</span>
                 </div>
             </div>
 
             {/* Top HUD: Command Bar */}
             <header className="max-w-7xl mx-auto mb-10 sticky top-0 z-40 px-4">
-                <div className="glass-card bg-black/80 backdrop-blur-3xl px-8 py-4 flex justify-between items-center border-teal-500/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                    <div className="flex items-center gap-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-teal-500/10 rounded-xl border border-teal-500/20">
-                                <Radar className="text-teal-500 animate-pulse" size={18} />
+                <div className="glass-card bg-[var(--bg-secondary)]/80 backdrop-blur-3xl px-8 py-5 flex justify-between items-center border-[var(--border-primary)] shadow-2xl transition-colors duration-300 relative overflow-hidden group">
+                    <div className="scanline"></div>
+                    <div className="flex items-center gap-10 relative z-10">
+                        <div className="flex items-center gap-4">
+                            <div className="relative">
+                                <div className="p-3 bg-teal-500/10 rounded-2xl border border-teal-500/20 group-hover:border-teal-500/50 transition-colors">
+                                    <Radar className="text-teal-600 dark:text-teal-500 animate-pulse" size={20} />
+                                </div>
+                                <div className="absolute -inset-1 bg-teal-500/20 blur-lg rounded-full animate-pulse group-hover:bg-teal-500/40" />
                             </div>
                             <div>
-                                <h1 className="text-lg font-black text-white italic tracking-tighter font-cyber uppercase leading-none">NEUROX_SHELL_v4.5</h1>
-                                <p className="text-[8px] text-gray-600 font-bold uppercase tracking-[0.4em] mt-1">SECURE_ENVIRONMENT / ACTIVE</p>
+                                <h1 className="text-xl font-black text-[var(--text-primary)] italic tracking-tighter font-cyber uppercase leading-none mb-1.5 flex items-center gap-2">
+                                    NEUROX_<span className="text-teal-600 dark:text-teal-400">SHELL</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 rounded-lg border border-teal-500/20 font-bold ml-2">v4.5</span>
+                                </h1>
+                                <p className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-[0.5em] mt-1 opacity-40">SECURE_ENVIRONMENT // ACTIVE_SESSION</p>
                             </div>
                         </div>
-                        <div className="h-8 w-px bg-white/5"></div>
-                        <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest uppercase">CURRENT_NODE:</span>
-                            <span className="text-[10px] text-teal-500 font-black tracking-[0.2em]">{currentSection} EVALUATION</span>
+                        <div className="h-10 w-px bg-[var(--border-primary)] opacity-50"></div>
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-[0.3em] opacity-40 border-l-2 border-teal-500/30 pl-3">ACTIVE_NODE:</span>
+                            <span className="text-[11px] text-[var(--text-primary)] dark:text-teal-400 font-extrabold tracking-[0.2em] pl-3 uppercase italic">{currentSection} EVALUATION</span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-10">
+                    <div className="flex items-center gap-12 relative z-10">
                         <div className="flex flex-col items-end">
-                            <div className="flex items-center gap-2 mb-0.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
-                                <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">LOG_REMAINING:</span>
+                            <div className="flex items-center gap-2 mb-1">
+                                <Activity size={10} className="text-red-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-[0.4em] italic">REMAINING:</span>
                             </div>
-                            <div className="text-2xl font-black text-white font-cyber tracking-tighter tabular-nums italic">
-                                {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                            <div className="text-3xl font-black text-[var(--text-primary)] font-cyber tracking-tight tabular-nums italic drop-shadow-sm">
+                                {Math.floor(timeLeft / 60)}<span className="animate-pulse">:</span>{String(timeLeft % 60).padStart(2, '0')}
                             </div>
                         </div>
-                        <div className="flex gap-1.5">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className={`w-1 h-6 rounded-full ${i <= 2 ? 'bg-teal-500/40' : 'bg-white/5'}`}></div>
+                        <div className="flex gap-2">
+                            {[1, 2, 3, 4, 5].map(i => (
+                                <div key={i} className={`w-1.5 h-8 rounded-full transition-all duration-700 ${timeLeft < 300 && i > 2 ? 'bg-red-500/20' : i <= 3 ? 'bg-teal-500 shadow-[0_0_15px_rgba(20,184,166,0.3)]' : 'bg-[var(--border-primary)]'}`}></div>
                             ))}
                         </div>
                     </div>
@@ -547,17 +677,17 @@ export default function CandidateAssessment() {
                 ))}
 
                 <footer className="pt-12 flex flex-col items-center gap-8">
-                    <div className="flex items-center gap-10 text-gray-600">
+                    <div className="flex items-center gap-10 text-[var(--text-secondary)] opacity-50">
                         <div className="flex items-center gap-3">
-                            <ShieldAlert size={14} className="text-teal-500/50" />
+                            <ShieldAlert size={14} className="text-teal-600 dark:text-teal-500/50" />
                             <span className="text-[9px] font-black uppercase tracking-widest">Active_Kernel_Hash: 0x82...F429</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Lock size={14} className="text-teal-500/50" />
+                            <Lock size={14} className="text-teal-600 dark:text-teal-500/50" />
                             <span className="text-[9px] font-black uppercase tracking-widest">Encryption: SHA-256</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Activity size={14} className="text-teal-500/50" />
+                            <Activity size={14} className="text-teal-600 dark:text-teal-500/50" />
                             <span className="text-[9px] font-black uppercase tracking-widest">Sync_Status: NOMINAL</span>
                         </div>
                     </div>
@@ -565,7 +695,7 @@ export default function CandidateAssessment() {
                     {currentSection !== "CODING" ? (
                         <button
                             onClick={handleTimeOut}
-                            className="cyber-button cyber-button-primary px-10 py-4 flex items-center gap-3 group text-sm font-black italic tracking-tighter"
+                            className="cyber-button cyber-button-primary px-10 py-4 flex items-center gap-3 group text-sm font-black italic tracking-tighter bg-teal-500 text-white dark:text-black"
                         >
                             COMMIT_AND_NEXT_PROTOCOL <ChevronRight size={16} className="group-hover:translate-x-1.5 transition-transform" />
                         </button>
@@ -573,7 +703,7 @@ export default function CandidateAssessment() {
                         <button
                             onClick={() => handleSubmit(false)}
                             disabled={submitting}
-                            className="cyber-button bg-white text-black hover:bg-teal-400 px-16 py-4 rounded-2xl flex items-center gap-3 group text-sm font-black italic tracking-tighter shadow-2xl"
+                            className="cyber-button bg-[var(--text-primary)] text-[var(--bg-primary)] px-16 py-4 rounded-2xl flex items-center gap-3 group text-sm font-black italic tracking-tighter shadow-2xl hover:bg-teal-500 hover:text-white transition-all"
                         >
                             {submitting ? 'TERMINATING_SESSION...' : <>FINAL_SYSTEM_DISCONNECT <CheckCircle2 size={18} /></>}
                         </button>
@@ -637,26 +767,26 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
     };
 
     return (
-        <div className="min-h-screen bg-[#020204] flex items-center justify-center p-12 font-sans overflow-hidden relative">
+        <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-12 font-sans overflow-hidden relative transition-colors duration-300">
             <div className="noise-overlay" />
             <div className="scanline" />
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-glow-teal opacity-20 pointer-events-none" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-glow-teal opacity-10 dark:opacity-20 pointer-events-none" />
 
-            <div className="max-w-4xl w-full glass-card p-12 space-y-12 relative overflow-hidden bg-black/60 border-teal-500/20 shadow-[0_50px_100px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-1000">
+            <div className="max-w-4xl w-full glass-card p-12 space-y-12 relative overflow-hidden bg-[var(--bg-secondary)] border-[var(--border-primary)] shadow-2xl animate-in zoom-in-95 duration-1000">
                 <div className="absolute top-0 right-0 p-10 opacity-[0.02] text-[120px] font-black font-cyber select-none italic tracking-tighter underline">AUTH</div>
 
                 <div className="flex flex-col md:flex-row items-center justify-between gap-10 relative z-10 border-b border-white/5 pb-10">
                     <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 bg-teal-500 flex items-center justify-center rounded-[1.5rem] shadow-[0_0_40px_rgba(20,184,166,0.6)]">
-                            <Shield size={32} className="text-black" />
+                        <div className="w-16 h-16 bg-teal-500 flex items-center justify-center rounded-[1.5rem] shadow-xl">
+                            <Shield size={32} className="text-white dark:text-black" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2.5 mb-1.5">
-                                <span className="px-2 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-400 font-black text-[9px] rounded uppercase tracking-[0.2em]">PROTOCOL_X_V4.0</span>
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-glow"></div>
+                                <span className="px-2 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400 font-black text-[9px] rounded uppercase tracking-[0.2em]">PROTOCOL_X_V4.0</span>
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
                             </div>
-                            <h1 className="text-3xl font-black text-white tracking-widest uppercase italic font-cyber leading-none">SYSTEM_CHECK</h1>
-                            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.6em] mt-2">NeuroX_Enforcement_Kernel</p>
+                            <h1 className="text-3xl font-black text-[var(--text-primary)] tracking-widest uppercase italic font-cyber leading-none">SYSTEM_CHECK</h1>
+                            <p className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-[0.6em] mt-2 opacity-50">NeuroX_Enforcement_Kernel</p>
                         </div>
                     </div>
                 </div>
@@ -667,8 +797,8 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
                             <Lock size={32} className="text-teal-500 animate-pulse absolute" />
                         </div>
                         <div className="text-center space-y-4">
-                            <h3 className="text-xl font-black text-white uppercase italic tracking-widest font-cyber">Secure Environment Required</h3>
-                            <p className="text-xs text-gray-500 uppercase tracking-widest leading-loose">The assessment kernel must run in full-screen mode to prevent unauthorized lateral movement.</p>
+                            <h3 className="text-xl font-black text-[var(--text-primary)] uppercase italic tracking-widest font-cyber">Secure Environment Required</h3>
+                            <p className="text-xs text-[var(--text-secondary)] uppercase tracking-widest leading-loose opacity-70">The assessment kernel must run in full-screen mode to prevent unauthorized lateral movement.</p>
                         </div>
                         <button
                             onClick={onEnterFullscreen}
@@ -680,13 +810,13 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
                         <div className="space-y-6">
-                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Camera size={14}/> VISUAL_FEED_VERIFICATION:</h3>
-                            <div className="aspect-video bg-black/80 rounded-[2rem] border border-white/5 relative overflow-hidden group shadow-inner">
+                            <h3 className="text-[10px] font-black text-teal-600 dark:text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Camera size={14}/> VISUAL_FEED_VERIFICATION:</h3>
+                            <div className="aspect-video bg-[var(--bg-primary)] rounded-[2rem] border border-[var(--border-primary)] relative overflow-hidden group shadow-inner">
                                 <VideoPreview stream={localStreamRef.current} isActive={cameraReady} opacity={100} />
                                 {!cameraReady && (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-[var(--bg-secondary)]/50 backdrop-blur-sm">
                                         <div className="w-12 h-12 border-2 border-teal-500/10 border-t-teal-500 rounded-full animate-spin mb-4" />
-                                        <span className="text-[9px] text-gray-700 uppercase font-black tracking-widest animate-pulse italic">Requesting_Hardware_Access...</span>
+                                        <span className="text-[9px] text-[var(--text-secondary)] uppercase font-black tracking-widest animate-pulse italic">Requesting_Hardware_Access...</span>
                                     </div>
                                 )}
                                 <div className="absolute top-4 left-4 flex items-center gap-2">
@@ -695,17 +825,17 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
                                 </div>
                             </div>
                             
-                            <div className="p-6 bg-black/40 border border-white/5 rounded-2xl font-mono text-xs leading-loose text-gray-500 h-[100px] overflow-hidden relative shadow-inner">
+                            <div className="p-6 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-2xl font-mono text-xs leading-loose text-[var(--text-secondary)] h-[100px] overflow-hidden relative shadow-inner transition-colors duration-300">
                                 <div className="space-y-1">
-                                    <div className="text-teal-500/50 text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] INITIALIZING_SIGNAL...</div>
-                                    {cameraReady && <div className="text-white text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] WEBCAM_NODE_IDENTIFIED</div>}
-                                    {scanState >= 3 && <div className="text-green-400 font-bold flash text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] ALL_HARDWARE_SYNCHRONIZED</div>}
+                                    <div className="text-teal-600 dark:text-teal-500/50 text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] INITIALIZING_SIGNAL...</div>
+                                    {cameraReady && <div className="text-[var(--text-primary)] text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] WEBCAM_NODE_IDENTIFIED</div>}
+                                    {scanState >= 3 && <div className="text-green-600 dark:text-green-400 font-bold flash text-[10px]">[{new Date().toISOString().split('T')[1].slice(0,-1)}] ALL_HARDWARE_SYNCHRONIZED</div>}
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-6">
-                            <h3 className="text-[10px] font-black text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Server size={14}/> HARDWARE_STATUS:</h3>
+                            <h3 className="text-[10px] font-black text-teal-600 dark:text-teal-500 uppercase tracking-[0.4em] font-cyber flex items-center gap-3"><Server size={14}/> HARDWARE_STATUS:</h3>
                             <div className="space-y-3">
                                 <HardwareCheck icon={<Camera size={16} />} label="VISUAL_NODE" status={cameraReady} />
                                 <HardwareCheck icon={<Mic size={16} />} label="AUDIO_NODE" status={cameraReady} />
@@ -717,7 +847,7 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
                                 onClick={handleStart}
                                 disabled={scanState < 3 || !cameraReady}
                                 className={`w-full py-5 text-xs font-black italic tracking-widest flex items-center justify-center gap-4 transition-all duration-700 rounded-2xl
-                                    ${(scanState === 3 && cameraReady) ? 'cyber-button bg-white text-black hover:bg-teal-400 animate-glow shadow-[0_0_30px_rgba(255,255,255,0.3)]' : 'bg-white/5 text-gray-600 border border-white/10 cursor-not-allowed'}
+                                    ${(scanState === 3 && cameraReady) ? 'cyber-button bg-teal-500 text-white dark:text-black hover:bg-teal-400 shadow-lg' : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border-primary)] cursor-not-allowed opacity-30'}
                                 `}
                             >
                                 <Play size={18} className={(scanState === 3 && cameraReady) ? "scale-110" : ""} /> INITIALIZE_NEURAL_LINK
@@ -732,20 +862,21 @@ function PreExamScreen({ isFullscreen, onEnterFullscreen, onStart, localStreamRe
 
 function HardwareCheck({ icon, label, status }) {
     return (
-        <div className={`flex items-center justify-between p-4 rounded-xl border ${status ? 'bg-teal-500/5 border-teal-500/20 text-teal-400' : 'bg-white/[0.02] border-white/5 text-gray-600'} transition-all duration-700`}>
+        <div className={`flex items-center justify-between p-4 rounded-xl border ${status ? 'bg-teal-500/5 border-teal-500/20 text-teal-600 dark:text-teal-400 shadow-sm' : 'bg-[var(--bg-primary)] border-[var(--border-primary)] text-[var(--text-secondary)] opacity-40'} transition-all duration-700`}>
             <div className="flex items-center gap-4">
                 <div className={status ? 'animate-pulse' : ''}>{icon}</div>
                 <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
             </div>
-            <div className={`w-2 h-2 rounded-full ${status ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.8)]' : 'bg-gray-700'}`}></div>
+            <div className={`w-2 h-2 rounded-full ${status ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.8)]' : 'bg-[var(--text-secondary)] opacity-20'}`}></div>
         </div>
     );
 }
 
-function QuestionBox({ idx, question, value, onChange, api }) {
+function QuestionBox({ question, value, onChange, idx, api }) {
+    const [editorValue, setEditorValue] = useState(typeof value === 'object' ? value.code : value);
     const [running, setRunning] = useState(false);
     const [results, setResults] = useState(null);
-    const [selectedLang, setSelectedLang] = useState('python');
+    const [selectedLang, setSelectedLang] = useState(typeof value === 'object' ? value.lang : 'python');
 
     const languages = [
         { id: 'python', name: 'Python 3', icon: '🐍' },
@@ -756,15 +887,21 @@ function QuestionBox({ idx, question, value, onChange, api }) {
     useEffect(() => {
         if (question.type === "CODING" && (!value || (typeof value === 'object' && !value.code))) {
             const boilerplate = question.content?.starter_code?.[selectedLang] || '';
+            setEditorValue(boilerplate);
             onChange(boilerplate, selectedLang);
+        } else if (question.type === "CODING" && value && typeof value === 'object' && value.code) {
+            setEditorValue(value.code);
+            setSelectedLang(value.lang || 'python');
+        } else if (question.type !== "CODING" && value && typeof value === 'string') {
+            setEditorValue(value);
         }
-    }, [question.id, selectedLang]);
+    }, [question.id, selectedLang, question.type]);
 
     const handleRun = async () => {
         setRunning(true);
         try {
             const { data } = await api.post("/api/assessments/submit-code", {
-                source_code: value?.code || value,
+                source_code: typeof value === 'object' ? value.code : value,
                 language_id: selectedLang,
                 test_cases: question.content?.test_cases || []
             });
@@ -779,23 +916,23 @@ function QuestionBox({ idx, question, value, onChange, api }) {
 
     if (question.type === "CODING") {
         return (
-            <div className="glass-card flex flex-col lg:flex-row gap-0 overflow-hidden min-h-[750px] border-white/5 hover:border-teal-500/10 shadow-[0_50px_100px_rgba(0,0,0,0.5)] bg-[#020204]/80 group">
+            <div className="glass-card flex flex-col lg:flex-row gap-0 overflow-hidden min-h-[750px] border-[var(--border-primary)] hover:border-teal-500/30 transition-all duration-500 shadow-2xl bg-[var(--bg-secondary)]/80 backdrop-blur-3xl group relative">
                 <div className="scanline opacity-[0.03]"></div>
                 {/* Problem Meta */}
-                <div className="lg:w-[380px] p-10 border-r border-white/5 bg-white/[0.01] overflow-y-auto space-y-10 custom-scrollbar relative z-10">
+                <div className="lg:w-[380px] p-10 border-r border-[var(--border-primary)] bg-[var(--bg-primary)]/50 overflow-y-auto space-y-10 custom-scrollbar relative z-10">
                     <div className="flex justify-between items-center">
-                        <span className="px-4 py-1.5 bg-teal-500 text-black font-black text-[9px] rounded-lg uppercase tracking-widest shadow-2xl">MISSION_STEP_{idx + 1}</span>
+                        <span className="px-4 py-1.5 bg-teal-500 text-white dark:text-black font-black text-[9px] rounded-lg uppercase tracking-widest shadow-lg">MISSION_STEP_{idx + 1}</span>
                         <div className="flex items-center gap-2.5">
-                            <Zap size={12} className="text-teal-500" />
-                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em]">TYPE: ALGORITHMIC</span>
+                            <Zap size={12} className="text-teal-600 dark:text-teal-500" />
+                            <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em] opacity-50">TYPE: ALGORITHMIC</span>
                         </div>
                     </div>
 
                     <div className="space-y-6">
-                        <h2 className="text-xl font-black text-white uppercase italic tracking-tighter font-cyber flex items-center gap-3">
-                            <ArrowRight size={20} className="text-teal-500" /> PROBLEM_SPEC:
+                        <h2 className="text-xl font-black text-[var(--text-primary)] uppercase italic tracking-tighter font-cyber flex items-center gap-3">
+                            <ArrowRight size={20} className="text-teal-600 dark:text-teal-500" /> PROBLEM_SPEC:
                         </h2>
-                        <div className="text-sm text-gray-400 leading-relaxed font-sans space-y-4">
+                        <div className="text-sm text-[var(--text-secondary)] leading-relaxed font-sans space-y-4">
                             {(question.content?.problem_statement || "No problem statement provided.").split('\n').map((line, i) => (
                                 <p key={i}>{line}</p>
                             ))}
@@ -823,6 +960,7 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                                     onChange={(e) => {
                                         setSelectedLang(e.target.value);
                                         const boilerplate = question.content?.starter_code?.[e.target.value] || '';
+                                        setEditorValue(boilerplate);
                                         onChange(boilerplate, e.target.value);
                                     }}
                                     className="bg-transparent text-[10px] font-black text-white uppercase tracking-widest outline-none cursor-pointer"
@@ -848,8 +986,11 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                             height="100%"
                             theme="vs-dark"
                             language={selectedLang === 'cpp' ? 'cpp' : selectedLang}
-                            value={typeof value === 'string' ? value : (value?.code || '')}
-                            onChange={(newValue) => onChange(newValue, selectedLang)}
+                            value={editorValue}
+                            onChange={(newValue) => {
+                                setEditorValue(newValue);
+                                onChange(newValue, selectedLang);
+                            }}
                             options={{
                                 minimap: { enabled: false },
                                 fontSize: 13,
@@ -886,12 +1027,9 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {results.map((r, i) => (
                                     <div key={i} className={`p-6 border-2 rounded-[2rem] flex items-center justify-between transition-all ${r.passed ? 'border-teal-500/10 bg-teal-500/[0.02]' : 'border-red-500/10 bg-red-500/[0.02]'}`}>
-                                        <div className="flex items-center gap-5">
-                                            <div className={`w-3 h-3 rounded-full ${r.passed ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] animate-pulse'}`}></div>
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">DATA_POINT_{i + 1}</span>
-                                                <span className="text-[9px] text-gray-700 font-bold uppercase mt-1 italic">{r.passed ? 'Verified_Secure' : 'Integrity_Violation'}</span>
-                                            </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">DATA_POINT_{i + 1}</span>
+                                            <span className="text-[9px] text-gray-700 font-bold uppercase mt-1 italic">{r.passed ? 'Verified_Secure' : 'Integrity_Violation'}</span>
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className={`text-[12px] font-black uppercase tracking-tighter italic ${r.passed ? 'text-teal-500' : 'text-red-500'}`}>{r.passed ? 'PASSED' : 'FAILED'}</span>
@@ -908,25 +1046,51 @@ function QuestionBox({ idx, question, value, onChange, api }) {
     }
 
     return (
-        <section className="glass-card p-10 relative border-white/5 bg-white/[0.01] group hover:border-teal-500/20 transition-all duration-1000 shadow-[0_50px_100px_rgba(0,0,0,0.5)] animate-in fade-in duration-1000">
-            <div className="absolute -top-3 -left-3 bg-teal-500 text-black px-5 py-2 rounded-xl font-black text-[10px] uppercase tracking-[0.3em] shadow-[0_10px_30px_rgba(20,184,166,0.3)] italic font-cyber">
-                MISSION_SEGMENT_{idx + 1}
+        <section className="glass-card p-10 md:p-14 relative group transition-all duration-700 hover:border-teal-500/30 bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)]/60 shadow-xl overflow-hidden">
+            <div className="scanline opacity-0 group-hover:opacity-10 transition-opacity"></div>
+            
+            <div className="absolute top-0 right-0 p-8 opacity-[0.03] italic text-8xl font-black font-cyber select-none pointer-events-none group-hover:opacity-[0.05] transition-opacity">
+                Q{String(idx + 1).padStart(2, '0')}
             </div>
 
-            <div className="space-y-12">
-                <div className="space-y-6">
-                    <p className="text-xl font-black text-white leading-tight tracking-tight uppercase italic font-cyber underline decoration-teal-500/20 underline-offset-4 decoration-2">
-                        {question.content?.question || "No question text available."}
-                    </p>
-                    <div className="flex gap-1.5 pt-2">
-                        {[1, 2, 3, 4, 5].map(i => (
-                            <div key={i} className={`w-8 h-1 rounded-full ${i <= 3 ? 'bg-teal-500/30' : 'bg-white/5'}`}></div>
-                        ))}
+            <div className="flex items-start gap-8 relative z-10 mb-10">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 bg-teal-500 text-white dark:text-black rounded-[1.5rem] flex items-center justify-center font-black text-xl shadow-lg relative group-hover:scale-110 transition-transform duration-500">
+                         {idx + 1}
+                         <div className="absolute -inset-1.5 bg-teal-500/20 blur-lg rounded-[1.5rem] animate-pulse" />
                     </div>
+                    <div className="w-1 h-12 bg-gradient-to-b from-teal-500/50 to-transparent rounded-full" />
                 </div>
+                <div className="flex-1 space-y-4 pt-2">
+                    <div className="flex items-center gap-3 text-[10px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-widest italic border-b border-teal-500/10 pb-2 w-fit">
+                        {question.type === "PERSONALIZED" ? (
+                            <>
+                                <Cpu size={12} className="opacity-70 animate-pulse" />
+                                EXPERIENCE_VALIDATION // PERSONA_PROFILE
+                            </>
+                        ) : (
+                            <>
+                                <Terminal size={12} className="opacity-70" />
+                                SUBJECT_NODE // EVALUATION_PHASE
+                            </>
+                        )}
+                    </div>
+                    <h2 className="text-2xl font-semibold text-[var(--text-primary)] leading-tight tracking-tight font-sans transition-all duration-300">
+                        {question.type === "PERSONALIZED" ? (
+                            <span className="flex items-center gap-2">
+                                <Info size={18} className="text-blue-500" />
+                                {question.question}
+                            </span>
+                        ) : (
+                            (question.content?.question || question.text || "").replace(/(?:\n|\r\n)?[A-D][.)]\s.*$/gm, "").trim()
+                        )}
+                    </h2>
+                </div>
+            </div>
 
+            <div className="relative z-10 pl-22">
                 {question.type === "MCQ" ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4">
                         {(question.content?.options || []).map((opt, i) => {
                             const label = String.fromCharCode(65 + i);
                             const isSelected = (value?.code || value) === label;
@@ -934,37 +1098,46 @@ function QuestionBox({ idx, question, value, onChange, api }) {
                                 <button
                                     key={label}
                                     onClick={() => onChange(label)}
-                                    className={`flex items-center gap-6 p-5 border-[1.5px] rounded-2xl transition-all duration-500 text-left group/opt relative overflow-hidden ${isSelected
-                                        ? 'bg-teal-500/10 border-teal-500 shadow-[0_0_50px_rgba(20,184,166,0.15)] scale-[1.01]'
-                                        : 'bg-black/60 border-white/5 hover:border-teal-500/30'
-                                        }`}
+                                    className={`group/opt flex items-center gap-6 p-6 rounded-2xl border transition-all duration-500 relative overflow-hidden text-left ${
+                                        isSelected 
+                                        ? "bg-teal-500 text-white dark:text-black border-teal-500 ring-2 ring-teal-500/20 shadow-xl" 
+                                        : "bg-[var(--bg-primary)] border-[var(--border-primary)] hover:border-teal-500/50 hover:bg-[var(--bg-secondary)] shadow-sm hover:shadow-md"
+                                    }`}
                                 >
-                                    {isSelected && <div className="absolute right-0 top-0 p-3 opacity-10"><Zap size={48} className="text-teal-500" /></div>}
-                                    <div className={`w-12 h-12 flex items-center justify-center rounded-2xl font-black text-xl transition-all duration-500 ${isSelected ? 'bg-teal-500 text-black shadow-[0_0_10px_rgba(20,184,166,0.5)] scale-110' : 'bg-white/5 text-gray-700'}`}>
+                                    <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-black text-lg transition-all duration-500 ${
+                                        isSelected ? "bg-white/20 border-white/40" : "bg-[var(--bg-secondary)] border-[var(--border-primary)] text-[var(--text-primary)] shadow-inner group-hover/opt:border-teal-500/30"
+                                    }`}>
                                         {label}
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className={`text-sm font-black tracking-tight uppercase transition-colors duration-500 ${isSelected ? 'text-white' : 'text-gray-500'}`}>{opt}</span>
-                                        <span className="text-[8px] font-black text-gray-800 uppercase tracking-widest mt-1">NODE_IDENTIFIER_{label}</span>
+                                        <span className={`text-base font-bold tracking-tight transition-colors duration-500 ${isSelected ? "text-white dark:text-black" : "text-[var(--text-primary)]"}`}>
+                                            {opt}
+                                        </span>
+                                        <span className={`text-[9px] font-black uppercase tracking-[0.2em] mt-0.5 opacity-60 ${isSelected ? "text-white/70 dark:text-black/70" : "text-[var(--text-secondary)]"}`}>
+                                            NODE_IDENTIFIER_{label}
+                                        </span>
                                     </div>
+                                    {isSelected && (
+                                        <div className="absolute top-0 right-0 p-3">
+                                            <div className="w-2 h-2 rounded-full bg-white dark:bg-black animate-pulse shadow-[0_0_15px_rgba(255,255,255,1)]"></div>
+                                        </div>
+                                    )}
                                 </button>
                             );
                         })}
                     </div>
                 ) : (
-                    <div className="relative group bg-black/40 rounded-[2rem] overflow-hidden">
-                        <div className="absolute top-0 right-0 p-8 opacity-[0.03] text-6xl font-black font-cyber select-none pointer-events-none italic">TEXT_STREAM</div>
-                        <textarea
-                            value={value?.code || value || ''}
-                            onChange={(e) => onChange(e.target.value)}
-                            className="w-full h-72 bg-transparent border-2 border-white/5 rounded-[2rem] p-10 text-white font-sans text-base focus:border-teal-500/30 outline-none transition-all duration-700 leading-relaxed placeholder:text-gray-800 font-bold selection:bg-teal-500/30 shadow-inner"
-                            placeholder="Initializing subjective evaluation input stream... Minimum 512 tokens recommended for high integrity score."
+                    <div className="relative group/editor mt-4">
+                         <div className="absolute -inset-1 bg-gradient-to-r from-teal-500/20 via-blue-500/20 to-teal-500/20 blur opacity-0 group-hover/editor:opacity-100 transition duration-1000" />
+                         <textarea
+                            value={editorValue || ''}
+                            onChange={(e) => {
+                                setEditorValue(e.target.value);
+                                onChange(e.target.value);
+                            }}
+                            className="relative w-full h-72 bg-white dark:bg-[#0a0a0f] border-2 border-[var(--border-primary)] rounded-[1.5rem] p-10 text-gray-900 dark:text-gray-100 font-sans text-base focus:border-teal-500/50 outline-none transition-all duration-700 leading-relaxed placeholder-gray-400 dark:placeholder-gray-600 font-medium selection:bg-teal-500/30 shadow-2xl backdrop-blur-md"
+                            placeholder="Initializing subjective evaluation input stream..."
                         />
-                        <div className="absolute bottom-6 right-8 flex gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500/20"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500/40"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500"></div>
-                        </div>
                     </div>
                 )}
             </div>
