@@ -1,16 +1,17 @@
 const supabase = require('../config/supabase');
+const db = require('../config/db');
 
 const getProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('id, email, resume_url, role, is_verified')
-            .eq('id', userId)
-            .single();
+        const { rows } = await db.query(
+            'SELECT id, email, resume_url, role, is_verified FROM users WHERE id = $1',
+            [userId]
+        );
+        const user = rows[0];
 
-        if (error) {
-            console.error('Error fetching profile:', error);
+        if (!user) {
+            console.error('Error fetching profile: User not found');
             return res.status(500).json({ error: 'Failed to fetch profile' });
         }
 
@@ -70,12 +71,11 @@ const uploadResume = async (req, res) => {
             .getPublicUrl(fileName);
 
         // Update user profile
-        const { error: dbError } = await supabase
-            .from('users')
-            .update({ resume_url: publicUrl })
-            .eq('id', userId);
-
-        if (dbError) throw dbError;
+        try {
+            await db.query('UPDATE users SET resume_url = $1 WHERE id = $2', [publicUrl, userId]);
+        } catch (dbError) {
+            throw dbError;
+        }
 
         res.status(200).json({
             message: 'Resume uploaded successfully',
@@ -122,40 +122,18 @@ const uploadSnapshot = async (req, res) => {
             .from('snapshots')
             .getPublicUrl(fileName);
 
-        // Update the submission record with the latest snapshot
-        const { error: dbError } = await supabase
-            .from('submissions')
-            .update({ 
-                details: supabase.rpc('jsonb_set', {
-                    target: 'details',
-                    path: '{last_snapshot_url}',
-                    value: `"${publicUrl}"`,
-                    create_missing: true
-                })
-            })
-            .eq('id', submissionId);
+        // Better Approach: Fetch, merge, and update.
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const submission = rows[0];
 
-        // Note: Direct JSONB update via supabase-js can be tricky.
-        // Alternative: Fetch, merge, and update.
-        const { data: submission, error: fetchError } = await supabase
-            .from('submissions')
-            .select('details')
-            .eq('id', submissionId)
-            .single();
-
-        if (fetchError) throw fetchError;
+        if (!submission) throw new Error("Submission not found");
 
         const updatedDetails = {
             ...(submission.details || {}),
             last_snapshot_url: publicUrl
         };
 
-        const { error: updateError } = await supabase
-            .from('submissions')
-            .update({ details: updatedDetails })
-            .eq('id', submissionId);
-
-        if (updateError) throw updateError;
+        await db.query('UPDATE submissions SET details = $1 WHERE id = $2', [updatedDetails, submissionId]);
 
         res.json({ success: true, url: publicUrl });
 

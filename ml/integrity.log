@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/sandesara/Desktop/11-03-2026/NeuroX-main(final)/ml/app_skill_integrity.py", line 1, in <module>
-    from fastapi import FastAPI, HTTPException
-ModuleNotFoundError: No module named 'fastapi'

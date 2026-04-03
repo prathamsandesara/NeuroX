@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { sendEmail } = require('../config/email');
@@ -13,15 +13,9 @@ const register = async (req, res) => {
     try {
         const { email, password, role } = req.body;
 
-        // Check if user exists - using maybeSingle to avoid PGRST116 error if not found
-        const { data: existingUser, error: checkError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (checkError) throw checkError;
-        if (existingUser) {
+        const { rows: existingUsers } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+        
+        if (existingUsers.length > 0) {
             return res.status(400).json({ error: 'User already exists' });
         }
 
@@ -36,20 +30,11 @@ const register = async (req, res) => {
             registered_at: new Date().toISOString()
         };
 
-        const { error } = await supabase
-            .from('users')
-            .insert([
-                {
-                    email,
-                    password_hash: passwordHash,
-                    role: role || 'CANDIDATE',
-                    is_verified: false,
-                    otp_hash: otpHash,
-                    security_metadata: security_metadata // Using a clean, explicit column name
-                }
-            ]);
-
-        if (error) throw error;
+        await db.query(
+            `INSERT INTO users (email, password_hash, role, is_verified, otp_hash, security_metadata) 
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [email, passwordHash, role || 'CANDIDATE', false, otpHash, security_metadata]
+        );
 
         console.log('-----------------------------------------');
         console.log(`[AUTH] REGISTRATION SUCCESS: ${email}`);
@@ -75,11 +60,8 @@ const verifyOTP = async (req, res) => {
     try {
         const { email, otp } = req.body;
 
-        const { data: user } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .single();
+        const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = rows[0];
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -94,12 +76,7 @@ const verifyOTP = async (req, res) => {
             return res.status(400).json({ error: 'Invalid OTP' });
         }
 
-        const { error } = await supabase
-            .from('users')
-            .update({ is_verified: true, otp_hash: null })
-            .eq('id', user.id);
-
-        if (error) throw error;
+        await db.query('UPDATE users SET is_verified = true, otp_hash = null WHERE id = $1', [user.id]);
 
         res.status(200).json({ message: 'Account verified successfully' });
     } catch (error) {
@@ -112,14 +89,10 @@ const login = async (req, res) => {
     try {
         const { email, password, deviceFingerprint } = req.body;
 
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
+        const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = rows[0];
 
         console.log(`[AUTH_DEBUG] Login attempt for: ${email}`);
-        if (userError) console.error(`[AUTH_DEBUG] Supabase lookup error:`, userError);
 
         if (!user) {
             console.warn(`[AUTH_DEBUG] User not found: ${email}`);
@@ -141,8 +114,6 @@ const login = async (req, res) => {
         }
 
         console.log(`[AUTH_DEBUG] Attempting password compare for ${email}`);
-        console.log(`[AUTH_DEBUG] Provided password type: ${typeof password}, length: ${password?.length}`);
-        console.log(`[AUTH_DEBUG] Stored hash length: ${user.password_hash?.length}`);
         
         const isMatch = await bcrypt.compare(password, user.password_hash);
         console.log(`[AUTH_DEBUG] Password match for ${email}: ${isMatch}`);
@@ -160,7 +131,7 @@ const login = async (req, res) => {
                 updatedMeta.lockout_until = new Date(Date.now() + 15 * 60 * 1000).toISOString();
                 updatedMeta.failed_attempts = 0;
             }
-            supabase.from('users').update({ security_metadata: updatedMeta }).eq('id', user.id).then();
+            db.query('UPDATE users SET security_metadata = $1 WHERE id = $2', [updatedMeta, user.id]).catch(console.error);
             await logSecurityEvent('LOGIN_FAILED', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], { failedAttempts }, failedAttempts >= 5 ? 'CRITICAL' : 'MEDIUM');
             return res.status(401).json({ 
                 error: `Invalid credentials. ${5 - failedAttempts > 0 ? (5 - failedAttempts) + ' attempts remaining before lockout.' : 'Account locked.'}`,
@@ -191,7 +162,7 @@ const login = async (req, res) => {
             login_history: loginHistory,
         };
 
-        supabase.from('users').update({ security_metadata: updatedSecurityMeta }).eq('id', user.id).then();
+        db.query('UPDATE users SET security_metadata = $1 WHERE id = $2', [updatedSecurityMeta, user.id]).catch(console.error);
 
         const token = jwt.sign(
             { id: user.id, role: user.role, email: user.email },
@@ -221,23 +192,24 @@ const login = async (req, res) => {
 const forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
-        const { data: user } = await supabase.from('users').select('id').eq('email', email).single();
+        const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+        const user = rows[0];
+        
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         const token = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 3600000); // 1 hour
 
-        await supabase.from('password_reset_tokens').insert({
-            user_id: user.id,
-            token: token,
-            expires_at: expiresAt.toISOString()
-        });
+        await db.query(
+            'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+            [user.id, token, expiresAt.toISOString()]
+        );
 
-        const resetLink = `${process.env.FRONTEND_URL} / reset - password / ${token}`;
+        const resetLink = `${process.env.FRONTEND_URL}/reset-password/${token}`;
         await sendEmail({
             to: email,
             subject: 'Reset Password',
-            htmlContent: `< p > Click here to reset: <a href="${resetLink}">${resetLink}</a></p > `
+            htmlContent: `<p>Click here to reset: <a href="${resetLink}">${resetLink}</a></p>`
         });
 
         res.json({ message: 'Reset link sent' });
@@ -251,18 +223,17 @@ const resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
 
-        const { data: resetToken } = await supabase
-            .from('password_reset_tokens')
-            .select('*')
-            .eq('token', token)
-            .gt('expires_at', new Date().toISOString())
-            .single();
+        const { rows } = await db.query(
+            'SELECT * FROM password_reset_tokens WHERE token = $1 AND expires_at > $2',
+            [token, new Date().toISOString()]
+        );
+        const resetToken = rows[0];
 
         if (!resetToken) return res.status(400).json({ error: 'Invalid or expired token' });
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await supabase.from('users').update({ password_hash: hash }).eq('id', resetToken.user_id);
-        await supabase.from('password_reset_tokens').delete().eq('id', resetToken.id);
+        await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, resetToken.user_id]);
+        await db.query('DELETE FROM password_reset_tokens WHERE id = $1', [resetToken.id]);
 
         res.json({ message: 'Password reset successfully' });
     } catch (error) {
@@ -279,13 +250,10 @@ const logout = (req, res) => {
 const getMe = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .maybeSingle();
+        const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+        const user = rows[0];
 
-        if (error || !user) {
+        if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
 
@@ -302,12 +270,8 @@ const getMe = async (req, res) => {
 const deleteResume = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { error } = await supabase
-            .from('users')
-            .update({ resume_url: null })
-            .eq('id', userId);
-
-        if (error) throw error;
+        await db.query('UPDATE users SET resume_url = null WHERE id = $1', [userId]);
+        
         res.json({ message: 'Resume deleted successfully' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete resume' });

@@ -1,5 +1,5 @@
 const axios = require('axios');
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 
 const { internalGenerateAssessment } = require('./assessmentController');
 
@@ -41,39 +41,25 @@ const parseJD = async (req, res) => {
         if (difficultyLevel === 'FRESHER') difficultyLevel = 'JUNIOR';
 
         // Store in DB
-        const { data: job, error } = await supabase
-            .from('jobs')
-            .insert([{
-                title: job_title,
-                description: jd_text,
-                skills: mlData.skills,
-                difficulty_level: difficultyLevel,
-                experience_min,
-                experience_max,
-                domain,
-                created_by: userId
-            }])
-            .select()
-            .single();
-
-        if (error) throw error;
+        const { rows: jobRows } = await db.query(
+            `INSERT INTO jobs (title, description, skills, difficulty_level, experience_min, experience_max, domain, created_by) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [job_title, jd_text, JSON.stringify(mlData.skills), difficultyLevel, experience_min, experience_max, domain, userId]
+        );
+        const job = jobRows[0];
 
         // Create Assessment placeholder
-        const { data: assessData, error: assessError } = await supabase
-            .from('assessments')
-            .insert([{
-                job_id: job.id,
-                assessment_distribution: {
-                    ...mlData.assessment_distribution,
-                    mcq_count: req.body.mcq_count || 3,
-                    subjective_count: req.body.subjective_count || 2,
-                    coding_count: req.body.coding_count || 1
-                }
-            }])
-            .select()
-            .single();
+        const assessDist = {
+            ...mlData.assessment_distribution,
+            mcq_count: req.body.mcq_count || 3,
+            subjective_count: req.body.subjective_count || 2,
+            coding_count: req.body.coding_count || 1
+        };
 
-        if (assessError) throw assessError;
+        const { rows: assessRows } = await db.query(
+            'INSERT INTO assessments (job_id, assessment_distribution) VALUES ($1, $2) RETURNING *',
+            [job.id, JSON.stringify(assessDist)]
+        );
 
         // ASYNC TRIGGER: Generate Assessment Questions
         // We don't await this if we want fast response, but for reliability let's await it for now
@@ -100,46 +86,65 @@ const parseJD = async (req, res) => {
 const getJobs = async (req, res) => {
     try {
         const userId = req.user.id;
-        let query;
 
         if (req.user.role === 'CANDIDATE') {
-            // Fetch all jobs and their assessments. 
-            // We use a separate query or filter logic to only get CURRENT user's submissions.
-            const { data: allJobs, error } = await supabase.from('jobs').select(`
-                *,
-                assessments (
-                    *,
-                    submissions (
-                        id,
-                        status,
-                        user_id,
-                        attempts_left
-                    )
-                )
-            `);
-            if (error) throw error;
-
-            // Post-process to filter submissions to only the current user
-            // AND ensure only jobs WITH an assessment are shown (Fail-safe)
-            const filteredJobs = allJobs
-                .filter(job => job.assessments && job.assessments.length > 0)
-                .map(job => ({
-                    ...job,
-                    assessments: job.assessments.map(assess => ({
-                        ...assess,
-                        submissions: (assess.submissions || []).filter(s => s.user_id === userId)
-                    }))
-                }));
-            return res.json(filteredJobs);
+            const query = `
+                SELECT 
+                    j.*,
+                    COALESCE(
+                        json_agg(
+                            jsonb_build_object(
+                                'id', a.id,
+                                'job_id', a.job_id,
+                                'assessment_distribution', a.assessment_distribution,
+                                'submissions', (
+                                    SELECT COALESCE(
+                                        json_agg(jsonb_build_object(
+                                            'id', s.id,
+                                            'status', s.status,
+                                            'user_id', s.user_id,
+                                            'attempts_left', s.attempts_left
+                                        )), '[]'::json
+                                    )
+                                    FROM submissions s
+                                    WHERE s.assessment_id = a.id AND s.user_id = $1
+                                )
+                            )
+                        ) FILTER (WHERE a.id IS NOT NULL), '[]'
+                    ) AS assessments
+                FROM jobs j
+                LEFT JOIN assessments a ON j.id = a.job_id
+                GROUP BY j.id
+            `;
+            const { rows: filteredJobs } = await db.query(query, [userId]);
+            
+            // Post-process to filter ensure only jobs WITH an assessment are shown (Fail-safe)
+            const finalJobs = filteredJobs.filter(job => job.assessments && job.assessments.length > 0);
+            return res.json(finalJobs);
         } else {
             // For Recruiters/HR, fetch only jobs they created.
-            query = supabase.from('jobs').select('*, assessments(*)').eq('created_by', userId);
+            const query = `
+                SELECT 
+                    j.*,
+                    COALESCE(
+                        json_agg(
+                            jsonb_build_object(
+                                'id', a.id,
+                                'job_id', a.job_id,
+                                'assessment_distribution', a.assessment_distribution
+                                -- we can add other assessment fields here if required by UI
+                            )
+                        ) FILTER (WHERE a.id IS NOT NULL), '[]'
+                    ) AS assessments
+                FROM jobs j
+                LEFT JOIN assessments a ON j.id = a.job_id
+                WHERE j.created_by = $1
+                GROUP BY j.id
+            `;
+            const { rows: jobs } = await db.query(query, [userId]);
+            return res.json(jobs);
         }
 
-        const { data: jobs, error } = await query;
-
-        if (error) throw error;
-        res.json(jobs);
     } catch (error) {
         console.error('getJobs error:', error);
         res.status(500).json({ error: 'Failed to fetch jobs' });

@@ -1,4 +1,5 @@
-const supabase = require('../config/supabase');
+const supabase = require('../config/supabase'); // Still used for storage
+const db = require('../config/db');
 const pistonService = require('../services/pistonService');
 const aiClient = require('../utils/aiClient');
 const pdf = require('pdf-parse');
@@ -47,13 +48,11 @@ const startAssessment = async (req, res) => {
         const { assessmentId } = req.body;
         const user_id = req.user.id;
 
-        const { data: existing, error: fetchErr } = await supabase
-            .from('submissions')
-            .select('*')
-            .eq('user_id', user_id)
-            .eq('assessment_id', assessmentId);
+        const { rows: existing } = await db.query(
+            'SELECT * FROM submissions WHERE user_id = $1 AND assessment_id = $2',
+            [user_id, assessmentId]
+        );
 
-        if (fetchErr) throw fetchErr;
         const activeAttempt = existing.find(sub => sub.status === 'IN_PROGRESS') || existing[0];
 
         let finalSubmission;
@@ -63,24 +62,43 @@ const startAssessment = async (req, res) => {
             }
             finalSubmission = activeAttempt;
         } else {
-            const { data: submission, error: subError } = await supabase
-                .from('submissions')
-                .insert([{ user_id, assessment_id: assessmentId, status: 'IN_PROGRESS', attempts_left: 1 }])
-                .select().single();
-            if (subError) throw subError;
-            finalSubmission = submission;
+            const { rows: subRows } = await db.query(
+                `INSERT INTO submissions (user_id, assessment_id, status, attempts_left) 
+                 VALUES ($1, $2, $3, $4) RETURNING *`,
+                [user_id, assessmentId, 'IN_PROGRESS', 1]
+            );
+            finalSubmission = subRows[0];
         }
 
         if (!finalSubmission.details?.personalizedQuestions) {
-            const { data: userData } = await supabase.from('users').select('resume_url').eq('id', user_id).single();
-            const { data: jobData } = await supabase.from('assessments').select('jobs(title, skills)').eq('id', assessmentId).single();
-            if (userData?.resume_url) {
-                const personaQuestions = await generatePersonalizedQuestions(userData.resume_url, jobData.jobs.title, jobData.jobs.skills?.map(s => s.skill_name).join(', '));
+            const { rows: userRows } = await db.query('SELECT resume_url FROM users WHERE id = $1', [user_id]);
+            const userData = userRows[0];
+            
+            const { rows: jobRows } = await db.query(`
+                SELECT j.title, j.skills 
+                FROM assessments a 
+                JOIN jobs j ON a.job_id = j.id 
+                WHERE a.id = $1
+            `, [assessmentId]);
+            const jobData = jobRows[0];
+
+            if (userData?.resume_url && jobData) {
+                const skillsArr = typeof jobData.skills === 'string' ? JSON.parse(jobData.skills) : jobData.skills;
+                const personaQuestions = await generatePersonalizedQuestions(
+                    userData.resume_url, 
+                    jobData.title, 
+                    skillsArr?.map(s => s.skill_name).join(', ')
+                );
                 if (personaQuestions.length > 0) {
-                    const { data: updatedSub } = await supabase.from('submissions').update({
-                        details: { ...(finalSubmission.details || {}), personalizedQuestions: personaQuestions }
-                    }).eq('id', finalSubmission.id).select().single();
-                    if (updatedSub) finalSubmission = updatedSub;
+                    const updatedDetails = {
+                        ...(finalSubmission.details || {}),
+                        personalizedQuestions: personaQuestions
+                    };
+                    const { rows: updatedSub } = await db.query(
+                        'UPDATE submissions SET details = $1 WHERE id = $2 RETURNING *',
+                        [updatedDetails, finalSubmission.id]
+                    );
+                    if (updatedSub.length > 0) finalSubmission = updatedSub[0];
                 }
             }
         }
@@ -89,10 +107,23 @@ const startAssessment = async (req, res) => {
 };
 
 const evaluateSubmission = async (submissionId) => {
-    const { data: submission, error: subErr } = await supabase.from('submissions').select('*, assessments(questions(*))').eq('id', submissionId).single();
-    if (subErr || !submission) throw new Error('Submission not found');
+    const query = `
+        SELECT s.*, 
+        COALESCE(
+            json_agg(q.*) FILTER (WHERE q.id IS NOT NULL), '[]'
+        ) AS questions
+        FROM submissions s
+        JOIN assessments a ON s.assessment_id = a.id
+        LEFT JOIN questions q ON a.id = q.assessment_id
+        WHERE s.id = $1
+        GROUP BY s.id
+    `;
+    const { rows } = await db.query(query, [submissionId]);
+    const submission = rows[0];
 
-    const questions = submission.assessments.questions;
+    if (!submission) throw new Error('Submission not found');
+
+    const questions = submission.questions || [];
     const answers = submission.details?.rawAnswers || {};
     let totalScore = 0, totalMax = 0, mcqScore = 0, subjectiveScore = 0, codingScore = 0, mcqMax = 0, subjectiveMax = 0, codingMax = 0;
     const evaluationDetails = [];
@@ -101,7 +132,8 @@ const evaluateSubmission = async (submissionId) => {
         if (q.type === 'MCQ') {
             const userAnswer = answers[q.id];
             const qMax = q.marks || 1;
-            const isCorrect = userAnswer === q.content.correct_answer;
+            const content = typeof q.content === 'string' ? JSON.parse(q.content) : q.content;
+            const isCorrect = userAnswer === content.correct_answer;
             const qScore = isCorrect ? qMax : 0;
             mcqScore += qScore; mcqMax += qMax; totalScore += qScore; totalMax += qMax;
             evaluationDetails.push({ questionId: q.id, type: 'MCQ', passed: isCorrect, score: qScore, max: qMax });
@@ -111,9 +143,10 @@ const evaluateSubmission = async (submissionId) => {
     const evalTasks = [];
     questions.filter(q => q.type === 'SUBJECTIVE').forEach(q => {
         const qMax = q.marks || 4; subjectiveMax += qMax; totalMax += qMax;
+        const content = typeof q.content === 'string' ? JSON.parse(q.content) : q.content;
         evalTasks.push((async () => {
             try {
-                const prompt = `Evaluate subjective answer: Question: ${q.content.question}. Answer: ${answers[q.id] || ''}. Output JSON: { "similarity_percentage": number, "reasoning_summary": "string", "reference_answer": "string", "ai_forensics_score": number }`;
+                const prompt = `Evaluate subjective answer: Question: ${content.question}. Answer: ${answers[q.id] || ''}. Output JSON: { "similarity_percentage": number, "reasoning_summary": "string", "reference_answer": "string", "ai_forensics_score": number }`;
                 const response = await aiClient.chat.completions.create({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.1 });
                 const aiResult = JSON.parse(response.choices[0].message.content.match(/\{[\s\S]*\}/)[0]);
                 const qScore = (aiResult.similarity_percentage / 100) * qMax;
@@ -128,15 +161,17 @@ const evaluateSubmission = async (submissionId) => {
         const userAnswer = answers[q.id];
         const code = typeof userAnswer === 'object' ? userAnswer.code : userAnswer;
         const language = typeof userAnswer === 'object' ? (userAnswer.lang || 'python') : 'python';
+        const content = typeof q.content === 'string' ? JSON.parse(q.content) : q.content;
+        
         evalTasks.push((async () => {
-            const testResults = await Promise.all((q.content.test_cases || []).map(async (test) => {
+            const testResults = await Promise.all((content.test_cases || []).map(async (test) => {
                 try {
                     const runResult = await pistonService.executeCode(language, code, test.input);
                     return { passed: (runResult.stdout || "").trim() === (test.output || "").trim(), input: test.input };
                 } catch (err) { return { passed: false, error: err.message }; }
             }));
             const testsPassed = testResults.filter(r => r.passed).length;
-            const qScore = (q.content.test_cases?.length > 0) ? (testsPassed / q.content.test_cases.length) * qMax : 0;
+            const qScore = (content.test_cases?.length > 0) ? (testsPassed / content.test_cases.length) * qMax : 0;
             codingScore += qScore; totalScore += qScore;
             evaluationDetails.push({ questionId: q.id, type: 'CODING', score: qScore, max: qMax, testResults });
         })());
@@ -167,14 +202,33 @@ const evaluateSubmission = async (submissionId) => {
     const finalStatus = submission.status === 'TERMINATED_DUE_TO_VIOLATION' ? 'TERMINATED_DUE_TO_VIOLATION' : 'COMPLETED';
     console.log(`[EVAL] Final scores: Total ${totalScore}/${totalMax} (${finalPercentage.toFixed(2)}%)`);
 
-    const { error: updateErr } = await supabase.from('submissions').update({ score: finalPercentage, result_generated: true, status: finalStatus }).eq('id', submissionId);
-    if (updateErr) console.error('[EVAL_DB] Error updating submission:', updateErr.message);
+    try {
+        await db.query(
+            'UPDATE submissions SET score = $1, result_generated = true, status = $2 WHERE id = $3',
+            [finalPercentage, finalStatus, submissionId]
+        );
+    } catch (updateErr) {
+        console.error('[EVAL_DB] Error updating submission:', updateErr.message);
+    }
 
-    const { error: insertErr } = await supabase.from('results').insert([{
-        submission_id: submissionId,
-        details: { evaluationDetails, sectionScores: { mcq: mcqScore, subjective: subjectiveScore, coding: codingScore }, sectionMaxScores: { mcq: mcqMax, subjective: subjectiveMax, coding: codingMax }, totalPoints: Math.round(totalScore), maxPoints: totalMax, passStatus: finalPercentage >= 50, rawAnswers: answers }
-    }]);
-    if (insertErr) console.error('[EVAL_DB] Error inserting result:', insertErr.message);
+    const resultDetails = { 
+        evaluationDetails, 
+        sectionScores: { mcq: mcqScore, subjective: subjectiveScore, coding: codingScore }, 
+        sectionMaxScores: { mcq: mcqMax, subjective: subjectiveMax, coding: codingMax }, 
+        totalPoints: Math.round(totalScore), 
+        maxPoints: totalMax, 
+        passStatus: finalPercentage >= 50, 
+        rawAnswers: answers 
+    };
+
+    try {
+        await db.query(
+            'INSERT INTO results (submission_id, details) VALUES ($1, $2)',
+            [submissionId, JSON.stringify(resultDetails)]
+        );
+    } catch (insertErr) {
+        console.error('[EVAL_DB] Error inserting result:', insertErr.message);
+    }
 
     console.log(`[EVAL] Successfully completed evaluateSubmission for ${submissionId}`);
     return { totalScore, finalPercentage };
@@ -184,8 +238,15 @@ const submitAssessment = async (req, res) => {
     try {
         const { submissionId, answers } = req.body;
         console.log(`[SUBMIT] Initiating submission for ${submissionId}`);
-        const { error: submitErr } = await supabase.from('submissions').update({ details: { rawAnswers: answers }, status: 'SUBMITTED', completed_at: new Date() }).eq('id', submissionId);
-        if (submitErr) console.error('[SUBMIT_DB] Error updating raw answers:', submitErr.message);
+        
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const existingDetails = rows[0]?.details || {};
+        const newDetails = { ...existingDetails, rawAnswers: answers };
+
+        await db.query(
+            'UPDATE submissions SET details = $1, status = $2, completed_at = NOW() WHERE id = $3',
+            [newDetails, 'SUBMITTED', submissionId]
+        );
         
         // Run in background to prevent frontend timeout!
         evaluateSubmission(submissionId).catch(evalErr => console.error('[SUBMIT_BACKGROUND] Eval Error:', evalErr.message));
@@ -201,21 +262,54 @@ const submitAssessment = async (req, res) => {
 const getResult = async (req, res) => {
     try {
         const { submissionId } = req.params;
-        const { data: result, error } = await supabase.from('results').select('*, submissions(score, status, completed_at, proctoring_violations, assessments(job_id, jobs(title)))').eq('submission_id', submissionId).single();
-        if (error) return res.status(404).json({ error: 'RESULT_NOT_GENERATED' });
+        const query = `
+            SELECT r.*, 
+                   json_build_object(
+                       'score', s.score, 
+                       'status', s.status, 
+                       'completed_at', s.completed_at, 
+                       'proctoring_violations', s.proctoring_violations,
+                       'assessments', json_build_object(
+                           'job_id', a.job_id,
+                           'jobs', json_build_object('title', j.title)
+                       )
+                   ) AS submissions
+            FROM results r
+            JOIN submissions s ON r.submission_id = s.id
+            JOIN assessments a ON s.assessment_id = a.id
+            JOIN jobs j ON a.job_id = j.id
+            WHERE r.submission_id = $1
+        `;
+        const { rows } = await db.query(query, [submissionId]);
+        const result = rows[0];
+
+        if (!result) return res.status(404).json({ error: 'RESULT_NOT_GENERATED' });
         res.json(result);
-    } catch (error) { res.status(500).json({ error: 'Failed' }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ error: 'Failed' }); 
+    }
 };
 
 const logAssessmentViolation = async (req, res) => {
     try {
         const { assessment_id, candidate_id, violation_type, biometrics } = req.body;
         const userId = candidate_id || req.user.id;
-        const { data: submissions } = await supabase.from('submissions').select('proctoring_violations, id, status').eq('user_id', userId).eq('assessment_id', assessment_id);
+        
+        const { rows: submissions } = await db.query(
+            'SELECT proctoring_violations, id, status FROM submissions WHERE user_id = $1 AND assessment_id = $2',
+            [userId, assessment_id]
+        );
+
         const submission = submissions?.find(s => s.status === 'IN_PROGRESS') || submissions?.[0];
         if (!submission) return res.status(404).json({ error: 'No submission found' });
-        const updatedViolations = [...(submission.proctoring_violations || []), { type: violation_type, timestamp: new Date().toISOString(), biometrics: biometrics || null }];
-        await supabase.from('submissions').update({ proctoring_violations: updatedViolations, status: 'TERMINATED_DUE_TO_VIOLATION', attempts_left: 0, completed_at: new Date() }).eq('id', submission.id);
+        
+        const updatedViolations = [...(typeof submission.proctoring_violations === 'string' ? JSON.parse(submission.proctoring_violations) : (submission.proctoring_violations || [])), { type: violation_type, timestamp: new Date().toISOString(), biometrics: biometrics || null }];
+        
+        await db.query(
+            'UPDATE submissions SET proctoring_violations = $1, status = $2, attempts_left = 0, completed_at = NOW() WHERE id = $3',
+            [JSON.stringify(updatedViolations), 'TERMINATED_DUE_TO_VIOLATION', submission.id]
+        );
         res.json({ message: 'Violation logged' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -223,8 +317,13 @@ const logAssessmentViolation = async (req, res) => {
 const syncSnapshot = async (req, res) => {
     try {
         const { submissionId, snapshotUrl } = req.body;
-        const { data } = await supabase.from('submissions').select('details').eq('id', submissionId).single();
-        await supabase.from('submissions').update({ details: { ...(data.details || {}), last_snapshot_url: snapshotUrl } }).eq('id', submissionId);
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const currentDetails = rows[0]?.details || {};
+        
+        await db.query(
+            'UPDATE submissions SET details = $1 WHERE id = $2',
+            [{ ...currentDetails, last_snapshot_url: snapshotUrl }, submissionId]
+        );
         res.json({ message: 'Snapshot synced' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -232,8 +331,14 @@ const syncSnapshot = async (req, res) => {
 const syncAnswers = async (req, res) => {
     try {
         const { submissionId, answers } = req.body;
-        const { data } = await supabase.from('submissions').select('details').eq('id', submissionId).single();
-        await supabase.from('submissions').update({ details: { ...(data.details || {}), rawAnswers: { ...(data.details?.rawAnswers || {}), ...answers } } }).eq('id', submissionId);
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const currentDetails = rows[0]?.details || {};
+        const rawAnswers = currentDetails.rawAnswers || {};
+
+        await db.query(
+            'UPDATE submissions SET details = $1 WHERE id = $2',
+            [{ ...currentDetails, rawAnswers: { ...rawAnswers, ...answers } }, submissionId]
+        );
         res.json({ message: 'Answers synced' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -245,8 +350,14 @@ const uploadSnapshot = async (req, res) => {
         const fileName = `${submissionId}/${Date.now()}.jpg`;
         await supabase.storage.from('snapshots').upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true });
         const { data: { publicUrl } } = supabase.storage.from('snapshots').getPublicUrl(fileName);
-        const { data: subData } = await supabase.from('submissions').select('details').eq('id', submissionId).single();
-        await supabase.from('submissions').update({ details: { ...(subData.details || {}), last_snapshot_url: publicUrl } }).eq('id', submissionId);
+        
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const currentDetails = rows[0]?.details || {};
+        
+        await db.query(
+            'UPDATE submissions SET details = $1 WHERE id = $2',
+            [{ ...currentDetails, last_snapshot_url: publicUrl }, submissionId]
+        );
         res.json({ message: 'Snapshot uploaded', publicUrl });
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -254,18 +365,25 @@ const uploadSnapshot = async (req, res) => {
 const getPersonalizedQuestions = async (req, res) => {
     try {
         const { submissionId } = req.params;
-        const { data: submission } = await supabase.from('submissions').select('details').eq('id', submissionId).single();
-        res.json({ personalizedQuestions: submission.details?.personalizedQuestions || [] });
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const details = rows[0]?.details || {};
+        res.json({ personalizedQuestions: details.personalizedQuestions || [] });
     } catch (error) { res.status(500).json({ error: 'Failed' }); }
 };
 
 const reportAudioViolation = async (req, res) => {
     try {
         const { submissionId, type, reason } = req.body;
-        const { data: sub } = await supabase.from('submissions').select('details').eq('id', submissionId).single();
-        const currentDetails = sub?.details || {};
+        const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
+        const currentDetails = rows[0]?.details || {};
         const currentViolations = currentDetails.proctoring_violations || [];
-        await supabase.from('submissions').update({ details: { ...currentDetails, proctoring_violations: [...currentViolations, { type: type || 'AUDIO_ANOMALY', reason: reason || 'Multiple voices', timestamp: new Date().toISOString() }] } }).eq('id', submissionId);
+        
+        const updatedDetails = { 
+            ...currentDetails, 
+            proctoring_violations: [...currentViolations, { type: type || 'AUDIO_ANOMALY', reason: reason || 'Multiple voices', timestamp: new Date().toISOString() }] 
+        };
+        
+        await db.query('UPDATE submissions SET details = $1 WHERE id = $2', [updatedDetails, submissionId]);
         res.json({ message: 'Audio violation logged' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 };

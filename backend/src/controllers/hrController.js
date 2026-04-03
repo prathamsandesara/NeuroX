@@ -1,18 +1,23 @@
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 
 const getCandidates = async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('submissions')
-            .select(`
-                *,
-                users(email, resume_url),
-                assessments(job_id, jobs(title))
-            `)
-            .order('completed_at', { ascending: false });
-
-        if (error) throw error;
-        res.json(data);
+        const query = `
+            SELECT 
+                s.*,
+                json_build_object('email', u.email, 'resume_url', u.resume_url) AS users,
+                json_build_object(
+                    'job_id', a.job_id,
+                    'jobs', json_build_object('title', j.title)
+                ) AS assessments
+            FROM submissions s
+            JOIN users u ON s.user_id = u.id
+            JOIN assessments a ON s.assessment_id = a.id
+            JOIN jobs j ON a.job_id = j.id
+            ORDER BY s.completed_at DESC NULLS LAST
+        `;
+        const { rows } = await db.query(query);
+        res.json(rows);
     } catch (error) {
         console.error('Error fetching candidates:', error);
         res.status(500).json({ error: 'Failed to fetch candidates' });
@@ -23,49 +28,57 @@ const getCandidateDetail = async (req, res) => {
     try {
         const { submissionId } = req.params;
 
-        // 1. Try to fetch from results
-        const { data: result, error: resError } = await supabase
-            .from('results')
-            .select(`
-                *,
-                submissions(
-                    *,
-                    users(email, resume_url),
-                    assessments(
-                        *,
-                        jobs(title),
-                        questions(*)
-                    )
-                )
-            `)
-            .eq('submission_id', submissionId)
-            .maybeSingle();
+        const resultQuery = `
+            SELECT r.*,
+                   json_build_object(
+                       'id', s.id,
+                       'score', s.score,
+                       'status', s.status,
+                       'started_at', s.started_at,
+                       'completed_at', s.completed_at,
+                       'proctoring_violations', s.proctoring_violations,
+                       'users', json_build_object('email', u.email, 'resume_url', u.resume_url),
+                       'assessments', json_build_object(
+                           'id', a.id,
+                           'job_id', a.job_id,
+                           'jobs', json_build_object('title', j.title)
+                       )
+                   ) AS submissions
+            FROM results r
+            JOIN submissions s ON r.submission_id = s.id
+            JOIN users u ON s.user_id = u.id
+            JOIN assessments a ON s.assessment_id = a.id
+            JOIN jobs j ON a.job_id = j.id
+            WHERE r.submission_id = $1
+        `;
 
-        if (resError) throw resError;
-
-        if (result) {
-            return res.json(result);
+        const { rows: resultRows } = await db.query(resultQuery, [submissionId]);
+        
+        if (resultRows.length > 0) {
+            return res.json(resultRows[0]);
         }
 
-        // 2. Fallback: If no result record, fetch submission directly
-        const { data: submission, error: subError } = await supabase
-            .from('submissions')
-            .select(`
-                *,
-                users(email, resume_url),
-                assessments(
-                    *,
-                    jobs(title),
-                    questions(*)
-                )
-            `)
-            .eq('id', submissionId)
-            .maybeSingle();
+        // Fallback: If no result record, fetch submission directly
+        const subQuery = `
+            SELECT s.*,
+                   json_build_object('email', u.email, 'resume_url', u.resume_url) AS users,
+                   json_build_object(
+                       'id', a.id,
+                       'job_id', a.job_id,
+                       'jobs', json_build_object('title', j.title)
+                   ) AS assessments
+            FROM submissions s
+            JOIN users u ON s.user_id = u.id
+            JOIN assessments a ON s.assessment_id = a.id
+            JOIN jobs j ON a.job_id = j.id
+            WHERE s.id = $1
+        `;
 
-        if (subError) throw subError;
+        const { rows: subRows } = await db.query(subQuery, [submissionId]);
+        const submission = subRows[0];
+
         if (!submission) return res.status(404).json({ error: 'Candidate submission not found' });
 
-        // Construct a "pending" result object for the frontend
         res.json({
             submissions: submission,
             details: {
@@ -85,17 +98,10 @@ const getCandidateDetail = async (req, res) => {
 const resetAttempt = async (req, res) => {
     try {
         const { submissionId } = req.body;
-        const { error } = await supabase
-            .from('submissions')
-            .update({
-                attempts_left: 1,
-                status: 'IN_PROGRESS',
-                completed_at: null,
-                score: null
-            })
-            .eq('id', submissionId);
-
-        if (error) throw error;
+        await db.query(
+            'UPDATE submissions SET attempts_left = 1, status = $1, completed_at = NULL, score = NULL WHERE id = $2',
+            ['IN_PROGRESS', submissionId]
+        );
         res.json({ message: 'Attempt reset successfully' });
     } catch (error) {
         console.error('Error resetting attempt:', error);
@@ -105,13 +111,8 @@ const resetAttempt = async (req, res) => {
 
 const getHRStats = async (req, res) => {
     try {
-        const { data: submissions, error } = await supabase
-            .from('submissions')
-            .select('score, status, completed_at');
+        const { rows: submissions } = await db.query('SELECT score, status, completed_at FROM submissions');
 
-        if (error) throw error;
-
-        // Simple aggregation for stats
         const stats = {
             total: submissions.length,
             completed: submissions.filter(s => s.status === 'COMPLETED').length,
@@ -135,23 +136,20 @@ const getHRStats = async (req, res) => {
 const logProctoringViolation = async (req, res) => {
     try {
         const { submissionId, violation } = req.body;
-        // Fetch current violations
-        const { data: sub, error: fetchErr } = await supabase
-            .from('submissions')
-            .select('proctoring_violations')
-            .eq('id', submissionId)
-            .single();
+        
+        const { rows } = await db.query('SELECT proctoring_violations FROM submissions WHERE id = $1', [submissionId]);
+        const sub = rows[0];
+        
+        if (!sub) throw new Error('Submission not found');
 
-        if (fetchErr) throw fetchErr;
+        const currentViolations = typeof sub.proctoring_violations === 'string' ? JSON.parse(sub.proctoring_violations) : (sub.proctoring_violations || []);
+        const updatedViolations = [...currentViolations, { ...violation, timestamp: new Date() }];
 
-        const updatedViolations = [...(sub.proctoring_violations || []), { ...violation, timestamp: new Date() }];
+        await db.query(
+            'UPDATE submissions SET proctoring_violations = $1 WHERE id = $2',
+            [JSON.stringify(updatedViolations), submissionId]
+        );
 
-        const { error: updateErr } = await supabase
-            .from('submissions')
-            .update({ proctoring_violations: updatedViolations })
-            .eq('id', submissionId);
-
-        if (updateErr) throw updateErr;
         res.json({ message: 'Violation logged' });
     } catch (error) {
         console.error('Error logging violation:', error);

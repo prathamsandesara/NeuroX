@@ -1,16 +1,18 @@
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 
 // Get real-time security events for the dashboard
 const getSecurityEvents = async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('integrity_logs')
-            .select('*, users(email)')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (error) throw error;
-        res.json(data);
+        const query = `
+            SELECT i.*, 
+                   json_build_object('email', u.email) AS users
+            FROM integrity_logs i
+            JOIN users u ON i.user_id = u.id
+            ORDER BY i.created_at DESC
+            LIMIT 50
+        `;
+        const { rows } = await db.query(query);
+        res.json(rows);
     } catch (error) {
         console.error('Error fetching security events:', error);
         res.status(500).json({ error: 'Failed to fetch security events' });
@@ -20,11 +22,7 @@ const getSecurityEvents = async (req, res) => {
 // Get aggregated security metrics
 const getSecurityMetrics = async (req, res) => {
     try {
-        const { data: logs, error } = await supabase
-            .from('integrity_logs')
-            .select('risk_level');
-
-        if (error) throw error;
+        const { rows: logs } = await db.query('SELECT risk_level FROM integrity_logs');
 
         const metrics = {
             total_violations: logs.length,

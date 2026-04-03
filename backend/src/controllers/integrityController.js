@@ -1,5 +1,5 @@
 const axios = require('axios');
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 const crypto = require('crypto');
 
 const evaluateIntegrity = async (req, res) => {
@@ -74,13 +74,10 @@ const evaluateIntegrity = async (req, res) => {
         // --- IPS INTERVENTION (ACTIVE DEFENSE) ---
         if (risk_level === 'CRITICAL') {
             console.log(`[SEC_KERNEL] IPS Intervention triggered for candidate ${user_id}. Locking session.`);
-            await supabase
-                .from('submissions')
-                .update({
-                    status: 'TERMINATED_DUE_TO_VIOLATION',
-                    completed_at: new Date().toISOString()
-                })
-                .eq('id', assessment_id);
+            await db.query(
+                'UPDATE submissions SET status = $1, completed_at = NOW() WHERE id = $2',
+                ['TERMINATED_DUE_TO_VIOLATION', assessment_id]
+            );
 
             return res.json({
                 ...mlResponse.data,
@@ -91,22 +88,18 @@ const evaluateIntegrity = async (req, res) => {
         }
 
         // Store log
-        const { error } = await supabase.from('integrity_logs').insert([{
-            user_id,
-            assessment_id,
-            risk_score: skill_integrity_score,
-            risk_level,
-            flagged,
-            details: {
-                ...req.body,
-                fingerprint: {
-                    ip: req.ip,
-                    ua: req.get('User-Agent')
-                }
+        const logDetails = {
+            ...req.body,
+            fingerprint: {
+                ip: req.ip,
+                ua: req.get('User-Agent')
             }
-        }]);
+        };
 
-        if (error) throw error;
+        await db.query(
+            'INSERT INTO integrity_logs (user_id, assessment_id, risk_score, risk_level, flagged, details) VALUES ($1, $2, $3, $4, $5, $6)',
+            [user_id, assessment_id, skill_integrity_score, risk_level, flagged, JSON.stringify(logDetails)]
+        );
 
         res.json({
             ...mlResponse.data,

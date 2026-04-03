@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase');
+const db = require('../config/db');
 const crypto = require('crypto');
 
 // Helper to generate a tamper-resistant hash for results
@@ -12,28 +12,29 @@ const generateIntegrityHash = (data) => {
 const getForensicLogs = async (req, res) => {
     try {
         // Fetch all users with security_metadata
-        const { data: users, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .order('created_at', { ascending: false });
-        if (userError) throw userError;
+        const { rows: users } = await db.query('SELECT * FROM users ORDER BY created_at DESC');
 
         // Fetch ALL submissions (not just ones with violations)
-        const { data: submissions, error: subError } = await supabase
-            .from('submissions')
-            .select(`
-                id, status, proctoring_violations, started_at, completed_at,
-                user_id, assessment_id, score,
-                assessments (id, job_id, jobs (title))
-            `)
-            .order('started_at', { ascending: false });
-        if (subError) throw subError;
+        const subQuery = `
+            SELECT s.id, s.status, s.proctoring_violations, s.started_at, s.completed_at,
+                   s.user_id, s.assessment_id, s.score,
+                   json_build_object(
+                       'id', a.id,
+                       'job_id', a.job_id,
+                       'jobs', json_build_object('title', j.title)
+                   ) AS assessments
+            FROM submissions s
+            JOIN assessments a ON s.assessment_id = a.id
+            JOIN jobs j ON a.job_id = j.id
+            ORDER BY s.started_at DESC NULLS LAST
+        `;
+        const { rows: submissions } = await db.query(subQuery);
 
         let forensicData = [];
 
         // 1. Map Users as AUTH_SUCCESS baseline traffic
         users.forEach(u => {
-            const meta = u.security_metadata || {};
+            const meta = typeof u.security_metadata === 'string' ? JSON.parse(u.security_metadata) : (u.security_metadata || {});
             const loginHistory = meta.login_history || [];
             forensicData.push({
                 id: `USER_LOG_${u.id}`,
@@ -69,9 +70,9 @@ const getForensicLogs = async (req, res) => {
 
         // 2. Map Submissions as assessment session events with anomaly scoring
         submissions.forEach(sub => {
-            const violations = sub.proctoring_violations || [];
+            const violations = typeof sub.proctoring_violations === 'string' ? JSON.parse(sub.proctoring_violations) : (sub.proctoring_violations || []);
             const user = users.find(u => u.id === sub.user_id);
-            const meta = user?.security_metadata || {};
+            const meta = user ? (typeof user.security_metadata === 'string' ? JSON.parse(user.security_metadata) : (user.security_metadata || {})) : {};
 
             // Session duration
             let sessionDuration = null;
@@ -143,21 +144,11 @@ const getForensicLogs = async (req, res) => {
 
 const getAuditLogs = async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('security_audit_log')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(100);
-            
-        if (error) {
-            console.error('Audit fetch error (table might not exist yet):', error);
-            return res.json([]); // return empty if not provisioned
-        }
-
-        res.json(data || []);
+        const { rows } = await db.query('SELECT * FROM security_audit_log ORDER BY created_at DESC LIMIT 100');
+        res.json(rows || []);
     } catch (error) {
-        console.error('Audit Fetch Exception:', error);
-        res.status(500).json({ error: 'Failed' });
+        console.error('Audit Fetch Exception (table might not exist yet):', error);
+        res.json([]); // return empty if not provisioned
     }
 };
 
@@ -166,20 +157,20 @@ const logAudit = async (req, res) => {
         const { action, resourceId, details } = req.body;
         const adminId = req.user.id;
 
-        const { error } = await supabase.from('integrity_logs').insert([{
-            user_id: adminId,
-            risk_level: 'AUDIT',
-            details: {
-                type: 'RBAC_AUDIT',
-                action,
-                resource_id: resourceId,
-                ip: req.ip,
-                timestamp: new Date().toISOString(),
-                ...details
-            }
-        }]);
+        const logDetails = {
+            type: 'RBAC_AUDIT',
+            action,
+            resource_id: resourceId,
+            ip: req.ip,
+            timestamp: new Date().toISOString(),
+            ...details
+        };
 
-        if (error) throw error;
+        await db.query(
+            'INSERT INTO integrity_logs (user_id, risk_level, details) VALUES ($1, $2, $3)',
+            [adminId, 'AUDIT', JSON.stringify(logDetails)]
+        );
+
         res.json({ message: 'Audit log captured' });
     } catch (error) {
         console.error('Audit Log Error:', error);
@@ -190,9 +181,14 @@ const logAudit = async (req, res) => {
 const getSystemStats = async (req, res) => {
     try {
         console.log('[Admin] Fetching system statistics...');
-        const { count: userCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
-        const { count: jobCount } = await supabase.from('jobs').select('*', { count: 'exact', head: true });
-        const { count: submissionCount } = await supabase.from('submissions').select('*', { count: 'exact', head: true });
+        
+        const { rows: uRows } = await db.query('SELECT COUNT(*) FROM users');
+        const { rows: jRows } = await db.query('SELECT COUNT(*) FROM jobs');
+        const { rows: sRows } = await db.query('SELECT COUNT(*) FROM submissions');
+
+        const userCount = parseInt(uRows[0].count, 10);
+        const jobCount = parseInt(jRows[0].count, 10);
+        const submissionCount = parseInt(sRows[0].count, 10);
 
         console.log('[Admin] Stats retrieved:', { userCount, jobCount, submissionCount });
 
@@ -207,25 +203,17 @@ const getSystemStats = async (req, res) => {
         res.status(500).json({ error: 'Stats Error' });
     }
 };
+
 const resetCandidateAttempt = async (req, res) => {
     try {
         const { submissionId } = req.body;
         
-        const { data, error } = await supabase
-            .from('submissions')
-            .update({ 
-                attempts_left: 1,
-                status: 'IN_PROGRESS',
-                completed_at: null,
-                score: null,
-                result_generated: false
-            })
-            .eq('id', submissionId)
-            .select();
-
-        if (error) throw error;
+        const { rows } = await db.query(
+            'UPDATE submissions SET attempts_left = 1, status = $1, completed_at = NULL, score = NULL, result_generated = false WHERE id = $2 RETURNING *',
+            ['IN_PROGRESS', submissionId]
+        );
         
-        res.json({ message: 'Candidate attempt reset successfully', data });
+        res.json({ message: 'Candidate attempt reset successfully', data: rows });
     } catch (error) {
         console.error('Reset Attempt Error:', error);
         res.status(500).json({ error: 'Failed to reset attempt' });
@@ -239,49 +227,27 @@ const deleteAssessment = async (req, res) => {
         console.log(`[Admin] Initiating purge for Assessment: ${assessmentId}`);
 
         // 0. Get job_id for full mission purge
-        const { data: assessment, error: fetchError } = await supabase
-            .from('assessments')
-            .select('job_id')
-            .eq('id', assessmentId)
-            .maybeSingle();
+        const { rows } = await db.query('SELECT job_id FROM assessments WHERE id = $1', [assessmentId]);
+        const assessment = rows[0];
 
-        if (fetchError || !assessment) {
+        if (!assessment) {
             return res.status(404).json({ error: 'Assessment not found' });
         }
 
         const jobId = assessment.job_id;
 
         // 1. Delete associated questions
-        const { error: qError } = await supabase
-            .from('questions')
-            .delete()
-            .eq('assessment_id', assessmentId);
-
-        if (qError) throw qError;
+        await db.query('DELETE FROM questions WHERE assessment_id = $1', [assessmentId]);
 
         // 2. Delete associated submissions
-        const { error: sError } = await supabase
-            .from('submissions')
-            .delete()
-            .eq('assessment_id', assessmentId);
-
-        if (sError) throw sError;
+        await db.query('DELETE FROM submissions WHERE assessment_id = $1', [assessmentId]);
 
         // 3. Delete the assessment itself
-        const { error: aError } = await supabase
-            .from('assessments')
-            .delete()
-            .eq('id', assessmentId);
-
-        if (aError) throw aError;
+        await db.query('DELETE FROM assessments WHERE id = $1', [assessmentId]);
 
         // 4. Delete the Job itself (Full Purge)
         if (jobId) {
-            const { error: jError } = await supabase
-                .from('jobs')
-                .delete()
-                .eq('id', jobId);
-            if (jError) console.error(`[Admin] Job deletion failed for ${jobId}:`, jError);
+            await db.query('DELETE FROM jobs WHERE id = $1', [jobId]);
         }
 
         res.json({ message: 'MISSION_PURGED_SUCCESSFULLY' });
