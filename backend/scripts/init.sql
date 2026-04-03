@@ -94,3 +94,16 @@ CREATE TABLE integrity_logs (
     details JSONB, -- { "resume_skill_coverage": ..., "mcq_guess_rate": ... }
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Security Audit Log Table
+CREATE TABLE security_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type VARCHAR(255) NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    email VARCHAR(255),
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    details JSONB,
+    risk_level VARCHAR(50) DEFAULT 'LOW',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

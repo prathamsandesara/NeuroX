@@ -13,7 +13,7 @@ graph TD
     DB[(Supabase PostgreSQL)]
     Redis[(Redis Cache)]
     ExtGroq[Groq API (Llama-3)]
-    ExtPiston[Piston / Judge0]
+    ExtPiston[Piston Code Engine]
     ExtBrevo[Brevo Email]
 
     Client -->|HTTP/REST| NodeServer

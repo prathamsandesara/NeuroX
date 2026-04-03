@@ -32,7 +32,7 @@
     -   **Section 2: Subjective** - Text area for rapid conceptual answers.
     -   **Section 3: Coding** - IDE-like environment.
         -   Candidate types code (Python/JS).
-        -   Clicks "Run" -> Code sent to Piston/Judge0.
+        -   Clicks "Run" -> Code sent to **Piston Code Engine**.
         -   Output displayed in terminal window.
     -   **Proctoring**:
         -   Tab switches are logged.

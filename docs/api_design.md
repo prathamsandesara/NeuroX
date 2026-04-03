@@ -1,9 +1,9 @@
-# 🔌 API Design & Endpoints
+# 🔌 API Documentation & Design
 
 ## Base URL
 `http://localhost:4000/api`
 
-## Authentication (`/auth`)
+## 🔐 Authentication (`/auth`)
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
 | POST | `/register` | Register new user. | No |
@@ -12,35 +12,37 @@
 | POST | `/logout` | Clear session cookie. | Yes |
 | GET | `/me` | Get current user details. | Yes |
 
-## Jobs (`/jobs`)
+## 💼 Jobs (`/jobs`)
 | Method | Endpoint | Description | Auth Required | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| POST | `/parse` | Parse JD text via ML. | Yes | Recruiter |
-| POST | `/create` | Save new job. | Yes | Recruiter |
-| GET | `/` | List created jobs. | Yes | Recruiter |
-| GET | `/:id` | Get job details. | Yes | Any |
+| POST | `/parse` | Parse JD text via ML service. | Yes | Recruiter |
+| POST | `/create` | Save a new job opening. | Yes | Recruiter |
+| GET | `/` | List all jobs created by the recruiter. | Yes | Recruiter |
+| GET | `/:id` | Get details for a specific job. | Yes | Any |
 
-## Assessments (`/assessments`)
+## 📝 Assessments (`/assessments`)
 | Method | Endpoint | Description | Auth Required | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| POST | `/generate` | Generate questions (Groq). | Yes | Recruiter |
-| GET | `/:id` | Get questions for assessment. | Yes | Candidate |
-| POST | `/submit-code` | Run code on Piston/Judge0. | Yes | Candidate |
+| POST | `/generate` | Generate questions using Groq LLM. | Yes | Recruiter |
+| GET | `/:id` | Get questions for an active test. | Yes | Candidate |
+| POST | `/submit-code` | Execute code in Piston Sandbox. | Yes | Candidate |
 
-## Submissions (`/submissions`)
+## 🚀 Submissions (`/submissions`)
 | Method | Endpoint | Description | Auth Required | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| POST | `/start` | Start assessment (Create submission). | Yes | Candidate |
-| POST | `/submit` | Submit final answers. | Yes | Candidate |
-| GET | `/result/:id` | Get result details. | Yes | Any |
+| POST | `/start` | Mark an assessment as "In Progress". | Yes | Candidate |
+| POST | `/submit` | Submit final answers for evaluation. | Yes | Candidate |
+| GET | `/result/:id` | Retrieve evaluation results and metrics. | Yes | Any |
 
-## Integrity (`/integrity`)
+## 🛡️ Integrity (`/integrity`)
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| POST | `/evaluate` | Internal endpoint for ML check. | Service Key |
+| POST | `/evaluate` | Internal endpoint for behavioral risk check. | Service Key |
 
-## Response Format
-Standard JSON response for success:
+## 📦 Global Response Format
+All API responses follow a consistent JSON structure:
+
+**Success Response:**
 ```json
 {
   "success": true,
@@ -49,14 +51,13 @@ Standard JSON response for success:
 }
 ```
 
-Standard JSON response for error:
+**Error Response:**
 ```json
 {
   "success": false,
-  "error": "Error message description"
+  "error": "Detailed error description"
 }
 ```
-
 
 ---
 ## Recent Architectural Updates & Security Hardening (v2.0)

@@ -5,7 +5,7 @@
 - **Python**: v3.9+ (for ML Service).
 - **Supabase Account**: For database and auth.
 - **Groq API Key**: For AI content generation.
-- **Piston Instance**: Public API or self-hosted.
+- **Piston Instance**: Public API (emkc.org) or self-hosted.
 
 ## 1. Backend Deployment (Node.js)
 We recommend **Render** or **Railway** for free-tier Node.js hosting.
@@ -40,17 +40,17 @@ We recommend **Vercel** or **Netlify** for zero-config React hosting.
 Use **Render** (Web Service) or **AWS Lambda**.
 
 1.  **Requirements**: Ensure `requirements.txt` is present.
-2.  **Start Command**: `gunicorn -w 4 -b 0.0.0.0:5000 app:app`
-3.  **Environment Variables**: None specific, unless model paths need adjustment.
+2.  **Start Command**: `gunicorn -w 4 -b 0.0.0.0:5000 app:app` (Refer to `app_jd_parser.py` and `app_skill_integrity.py`).
+3.  **Environment Variables**: None required by default.
 
 ## 4. Database Setup (Supabase)
-1.  **SQL Editor**: Run the `my.sql` script (found in root) to create tables.
-2.  **RLS Policies**: Go to Authentication -> Policies and enable RLS if strictly needed (currently handled by service key).
+1.  **SQL Editor**: Run the `init.sql` script (found in `backend/scripts/`) to create all required tables, enums, and audit logs.
+2.  **Resume Storage**: Follow the instructions in `SUPABASE_SETUP.md` to create the `resumes` storage bucket and enable public access.
 
 ## 5. Verification
--   Visit your frontend URL.
--   Register a new user to test Auth & DB connection.
--   Create a dummy job to test ML & Groq integration.
+-   Visit your frontend URL and ensure the registration flow is active.
+-   Create a test job to verify the **JD Parser** and **Groq** question generation.
+-   Take a sample test and submit code to verify the **Piston** sandbox integration.
 
 
 ---

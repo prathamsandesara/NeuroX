@@ -28,7 +28,7 @@
 
 ## 3. Code Execution Engine
 - **Purpose**: To run candidate code securely and verify correctness.
-- **Provider**: **Piston API** (or self-hosted Judge0).
+- **Provider**: **Piston API Engine** (Isolated Runtimes).
 - **Languages**: 50+ supported (React/Node defaults to JS, Python supported).
 - **Security**: Sandboxed execution to prevent malicious code from harming the server.
 - **Evaluation**: Compares `stdout` against `expected_output` for hidden test cases.

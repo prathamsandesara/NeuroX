@@ -3,9 +3,7 @@
 > vite --host
 
 
-  VITE v5.4.21  ready in 127 ms
+  VITE v5.4.21  ready in 402 ms
 
   ➜  Local:   http://localhost:5174/
-  ➜  Network: http://192.168.29.46:5174/
-1:57:33 PM [vite] hmr update /src/pages/CandidateResult.jsx, /src/index.css
-2:03:44 PM [vite] hmr update /src/pages/CandidateAssessment.jsx, /src/index.css
+  ➜  Network: http://10.1.95.75:5174/
