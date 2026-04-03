@@ -11,17 +11,21 @@
 We recommend **Render** or **Railway** for free-tier Node.js hosting.
 
 1.  **Environment Variables**:
-    Set the following in your hosting provider's dashboard:
+    We have provided a `.env.example` file as a template. Set the following in your hosting provider's dashboard:
     ```env
     PORT=4000
+    NODE_ENV=production
+    JWT_SECRET=your-secure-secret-key
+    FRONTEND_URL=https://your-frontend-domain.com
     SUPABASE_URL=https://your-project.supabase.co
     SUPABASE_SERVICE_KEY=your-service-role-key
     GROQ_API_KEY=your-groq-key
-    FrontEnd_URL=https://your-frontend-domain.com
+    BREVO_API_KEY=your-brevo-key
+    REDIS_URL=your-redis-url
     INTEGRITY_MODEL_URL=https://your-ml-service.com/integrity/evaluate
     ```
 2.  **Build Command**: `npm install`
-3.  **Start Command**: `npm start` (mapped to `node index.js`).
+3.  **Start Command**: `npm start`
 
 ## 2. Frontend Deployment (React)
 We recommend **Vercel** or **Netlify** for zero-config React hosting.
@@ -31,8 +35,9 @@ We recommend **Vercel** or **Netlify** for zero-config React hosting.
     -   **Build Command**: `npm run build`
     -   **Output Directory**: `dist`
 2.  **Environment Variables**:
+    Refer to `.env.example` in the frontend directory.
     ```env
-    VITE_API_URL=https://your-backend-domain.com/api
+    VITE_API_URL=https://your-backend-domain.com
     ```
 3.  **Deploy**: Connect your GitHub repo and push to `main`.
 

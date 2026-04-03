@@ -7,13 +7,25 @@ dotenv.config();
 const PORT = process.env.PORT || 4000;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT} (accessible at http://localhost:${PORT})`);
+    console.log(`[NeuroX] Server running on port ${PORT}`);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[NeuroX] Local debug URL: http://localhost:${PORT}`);
+    }
 });
 
 // Initialize Socket.io for WebRTC Signaling
 const io = new Server(server, {
     cors: {
-        origin: (origin, callback) => callback(null, true), // Allow all for dev
+        origin: (origin, callback) => {
+            // Re-using the logic from app.js would be better, but for simplicity here:
+            if (!origin || process.env.NODE_ENV !== 'production') return callback(null, true);
+            const origins = [process.env.FRONTEND_URL].filter(Boolean);
+            if (origins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
         methods: ["GET", "POST"],
         credentials: true
     }

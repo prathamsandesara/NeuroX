@@ -43,8 +43,24 @@ app.use('/api/', limiter);
 app.use('/api/auth/', authLimiter);
 
 // Middleware
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174'
+].filter(Boolean);
+
 app.use(cors({
-    origin: (origin, callback) => callback(null, true), // Dynamically allow any origin (e.g. localhost, 192.168.x.x) for LAN dev
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 

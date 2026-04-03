@@ -3,10 +3,10 @@ import axios from 'axios';
 const getBaseURL = () => {
     // If explicitly provided via .env (e.g. for Production), use that
     const envUrl = import.meta.env.VITE_API_URL;
-    if (envUrl && !envUrl.includes('localhost') && import.meta.env.PROD) {
+    if (envUrl) {
         return envUrl;
     }
-    // Otherwise, dynamically infer the backend host based on how you accessed the frontend in the browser
+    // Fallback to local development endpoint if no env is provided
     return `${window.location.protocol}//${window.location.hostname}:4000`;
 };
 
