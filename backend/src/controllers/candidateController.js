@@ -1,4 +1,3 @@
-const supabase = require('../config/supabase');
 const db = require('../config/db');
 
 const getProfile = async (req, res) => {
@@ -35,51 +34,23 @@ const uploadResume = async (req, res) => {
 
         const file = req.file;
         const userId = req.user.id;
-        const timestamp = Date.now();
-        // Sanitize filename: remove spaces, special chars
-        const sanitizedOriginalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const fileName = `${userId}_${timestamp}_${sanitizedOriginalName}`;
 
-        console.log(`User ${userId} uploading resume: ${fileName}`);
+        console.log("User " + userId + " uploading resume to NeonDB as Base64");
 
-        // User confirmed bucket name is "Resumes"
-        let bucketName = 'resumes';
-
-        // Upload to Supabase Storage
-        const { data, error } = await supabase.storage
-            .from(bucketName)
-            .upload(fileName, file.buffer, {
-                contentType: file.mimetype,
-                upsert: true
-            });
-
-        if (error) {
-            console.error('Supabase Storage Error:', error);
-
-            // Check for potential bucket not found error to give better feedback
-            if (error.statusCode === '404' || error.message.includes('not found')) {
-                return res.status(500).json({
-                    error: 'Storage bucket not found. Please ensure a public bucket named "resumes" exists in Supabase.'
-                });
-            }
-            throw error;
-        }
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(fileName);
+        // Convert the buffer to a base64 Data URL
+        const base64Data = file.buffer.toString('base64');
+        const dataUrl = 'data:' + file.mimetype + ';base64,' + base64Data;
 
         // Update user profile
         try {
-            await db.query('UPDATE users SET resume_url = $1 WHERE id = $2', [publicUrl, userId]);
+            await db.query('UPDATE users SET resume_url = $1 WHERE id = $2', [dataUrl, userId]);
         } catch (dbError) {
             throw dbError;
         }
 
         res.status(200).json({
             message: 'Resume uploaded successfully',
-            resumeUrl: publicUrl
+            resumeUrl: dataUrl
         });
 
     } catch (error) {
@@ -106,23 +77,9 @@ const uploadSnapshot = async (req, res) => {
         }
 
         const file = req.file;
-        const userId = req.user.id;
-        const fileName = `snapshot_${submissionId}_${Date.now()}.jpg`;
+        const base64Data = file.buffer.toString('base64');
+        const publicUrl = 'data:image/jpeg;base64,' + base64Data;
 
-        const { data, error } = await supabase.storage
-            .from('snapshots')
-            .upload(fileName, file.buffer, {
-                contentType: 'image/jpeg',
-                upsert: true
-            });
-
-        if (error) throw error;
-
-        const { data: { publicUrl } } = supabase.storage
-            .from('snapshots')
-            .getPublicUrl(fileName);
-
-        // Better Approach: Fetch, merge, and update.
         const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
         const submission = rows[0];
 

@@ -1,4 +1,4 @@
-const supabase = require('../config/supabase'); // Still used for storage
+// Supabase removed for pure Postgres architecture
 const db = require('../config/db');
 const pistonService = require('../services/pistonService');
 const aiClient = require('../utils/aiClient');
@@ -346,13 +346,11 @@ const syncAnswers = async (req, res) => {
 const uploadSnapshot = async (req, res) => {
     try {
         const { submissionId, imageBase64 } = req.body;
-        const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-        const fileName = `${submissionId}/${Date.now()}.jpg`;
-        await supabase.storage.from('snapshots').upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true });
-        const { data: { publicUrl } } = supabase.storage.from('snapshots').getPublicUrl(fileName);
         
         const { rows } = await db.query('SELECT details FROM submissions WHERE id = $1', [submissionId]);
         const currentDetails = rows[0]?.details || {};
+        
+        const publicUrl = imageBase64.startsWith('data:') ? imageBase64 : 'data:image/jpeg;base64,' + imageBase64;
         
         await db.query(
             'UPDATE submissions SET details = $1 WHERE id = $2',
