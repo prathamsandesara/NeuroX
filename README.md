@@ -21,6 +21,7 @@
 
 **NeuroX** is a sophisticated platform designed to revolutionize online technical assessments. By leveraging advanced AI and behavioral biometrics, NeuroX ensures total fairness and integrity in the hiring process. Beyond simple browser locking, it monitors real-time candidate behavior, verifies skill authenticity, and automates job-matching with precision.
 
+
 ---
 
 ## 🚀 Key Capabilities
