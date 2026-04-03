@@ -215,10 +215,10 @@ Output Format:
         const placeholders = questionsToInsert.map((q, i) => {
             const index = i * 6;
             values.push(q.assessment_id, q.type, JSON.stringify(q.content), q.marks, q.topic || null, q.difficulty);
-            return \`($\${index + 1}, $\${index + 2}, $\${index + 3}, $\${index + 4}, $\${index + 5}, $\${index + 6})\`;
+            return `($\${index + 1}, $\${index + 2}, $\${index + 3}, $\${index + 4}, $\${index + 5}, $\${index + 6})`;
         }).join(', ');
 
-        const insertQuery = \`INSERT INTO questions (assessment_id, type, content, marks, topic, difficulty) VALUES \${placeholders}\`;
+        const insertQuery = `INSERT INTO questions (assessment_id, type, content, marks, topic, difficulty) VALUES \${placeholders}`;
         
         await db.query(insertQuery, values);
 
@@ -244,11 +244,11 @@ const generateAssessment = async (req, res) => {
 const getAssessment = async (req, res) => {
     try {
         const { assessmentId } = req.params;
-        console.log(\`[Assessment] Fetching questions for Assessment_ID: \${assessmentId} \`);
+        console.log(`[Assessment] Fetching questions for Assessment_ID: ${assessmentId} `);
 
         const { rows: questions } = await db.query('SELECT * FROM questions WHERE assessment_id = $1', [assessmentId]);
 
-        console.log(\`[Assessment] Found \${questions?.length || 0} questions.\`);
+        console.log(`[Assessment] Found ${questions?.length || 0} questions.`);
         res.json(questions);
     } catch (error) {
         console.error('[Assessment] Fetch Failure:', error.message);
@@ -287,7 +287,7 @@ const submitCode = async (req, res) => {
                     passed: actualOutput === expectedOutput
                 });
             } catch (err) {
-                console.error(\`Error running test case: \${err.message} \`);
+                console.error(`Error running test case: ${err.message} `);
                 results.push({
                     input: test.input,
                     error: 'Execution failed',
