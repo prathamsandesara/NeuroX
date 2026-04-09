@@ -46,7 +46,7 @@ const register = async (req, res) => {
         sendEmail({
             to: email,
             subject: 'Verify your NeuroX Account',
-            htmlContent: `<p>Your OTP is: <strong>${otp}</strong></p>`
+            otp: otp
         }).catch(err => console.error('Email sending failed (non-blocking error):', err.message));
 
         res.status(201).json({ message: 'User registered. Please check email for OTP.' });
@@ -84,6 +84,48 @@ const verifyOTP = async (req, res) => {
         res.status(500).json({ error: 'Server error during verification' });
     }
 };
+
+const resendOTP = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = rows[0];
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (user.is_verified) {
+            return res.status(400).json({ error: 'User already verified' });
+        }
+
+        const otp = generateOTP();
+        const otpHash = await bcrypt.hash(otp, 10);
+
+        await db.query('UPDATE users SET otp_hash = $1 WHERE id = $2', [otpHash, user.id]);
+
+        console.log('-----------------------------------------');
+        console.log(`[AUTH] OTP RESENT: ${email}`);
+        console.log(`[AUTH] NEW OTP: ${otp}`);
+        console.log('-----------------------------------------');
+
+        // Non-blocking email send
+        sendEmail({
+            to: email,
+            subject: 'Your New NeuroX OTP',
+            otp: otp
+        }).catch(err => console.error('Resend Email failed:', err.message));
+
+        await logSecurityEvent('OTP_RESENT', user.id, email, req.ip || req.headers['x-forwarded-for'], req.headers['user-agent'], {}, 'LOW');
+
+        res.status(200).json({ message: 'A new OTP has been sent to your email.' });
+    } catch (error) {
+        console.error('Resend OTP Error:', error);
+        res.status(500).json({ error: 'Server error during OTP resend' });
+    }
+};
+
 
 const login = async (req, res) => {
     try {
@@ -281,6 +323,7 @@ const deleteResume = async (req, res) => {
 module.exports = {
     register,
     verifyOTP,
+    resendOTP,
     login,
     forgotPassword,
     resetPassword,

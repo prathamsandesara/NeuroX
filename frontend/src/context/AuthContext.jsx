@@ -36,6 +36,10 @@ export const AuthProvider = ({ children }) => {
         return await api.post('/api/auth/verify-otp', { email, otp });
     };
 
+    const resendOTP = async (email) => {
+        return await api.post('/api/auth/resend-otp', { email });
+    };
+
     const logout = async () => {
         try {
             await api.post('/api/auth');
@@ -60,7 +64,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, register, verifyOTP, logout, loading, checkAuth, bypassLogin }}>
+        <AuthContext.Provider value={{ user, login, register, verifyOTP, resendOTP, logout, loading, checkAuth, bypassLogin }}>
             {children}
         </AuthContext.Provider>
     );

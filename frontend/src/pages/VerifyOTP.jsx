@@ -9,12 +9,42 @@ import {
 } from 'lucide-react';
 
 const VerifyOTP = () => {
-    const { verifyOTP } = useAuth();
+    const { verifyOTP, resendOTP } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [otp, setOtp] = useState('');
     const [loading, setLoading] = useState(false);
+    const [resendLoading, setResendLoading] = useState(false);
+    const [cooldown, setCooldown] = useState(0);
     const email = location.state?.email || '';
+
+    const startCooldown = () => {
+        setCooldown(60);
+        const timer = setInterval(() => {
+            setCooldown((prev) => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    };
+
+    const handleResend = async () => {
+        if (cooldown > 0 || !email) return;
+
+        setResendLoading(true);
+        try {
+            await resendOTP(email);
+            toast.success('NEW_TOKEN_PROVISIONED: CHECK_INBOX');
+            startCooldown();
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'TOKEN_PROVISION_FAILED: RETRY_LATER');
+        } finally {
+            setResendLoading(false);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -29,6 +59,7 @@ const VerifyOTP = () => {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="min-h-screen bg-[var(--bg-primary)] relative flex items-center justify-center font-sans py-20 px-8 overflow-hidden select-none transition-colors duration-300">
@@ -103,6 +134,24 @@ const VerifyOTP = () => {
                                     <>CONFIRM_IDENTITY_HANDSHAKE <ArrowRight size={16} className="group-hover/btn:translate-x-1.5 transition-transform" /></>
                                 )}
                             </button>
+
+                            <div className="flex flex-col items-center gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={handleResend}
+                                    disabled={resendLoading || cooldown > 0}
+                                    className={`text-[9px] font-black uppercase tracking-[0.3em] font-cyber transition-all duration-300 flex items-center gap-2 ${cooldown > 0 || resendLoading ? 'text-[var(--text-secondary)] opacity-50 cursor-not-allowed' : 'text-teal-500 hover:text-teal-400 hover:scale-105'}`}
+                                >
+                                    {resendLoading ? (
+                                        <Activity size={10} className="animate-spin" />
+                                    ) : (
+                                        <Radar size={10} className={cooldown > 0 ? '' : 'animate-pulse'} />
+                                    )}
+                                    {cooldown > 0 ? `REGENERATE_TOKEN_IN_${cooldown}S` : 'REQUEST_NEW_DECRYPTION_TOKEN'}
+                                </button>
+                                <div className="w-32 h-[1px] bg-gradient-to-r from-transparent via-[var(--border-primary)] to-transparent"></div>
+                            </div>
+
                         </form>
 
                         <div className="text-center pt-6 relative z-10 group/abort">
